@@ -78,12 +78,12 @@ export default function PreferencesPanel({ prefs, onChange }: PreferencesPanelPr
                     {/* Risk profile */}
                     <div>
                         <label className="text-xs text-slate-400 mb-1.5 block">Risk Profile</label>
-                        <div className="flex gap-2">
+                        <div className="flex gap-1.5">
                             {["conservative", "moderate", "aggressive"].map(rp => (
                                 <button
                                     key={rp}
                                     onClick={() => onChange({ ...prefs, riskProfile: rp })}
-                                    className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-all border
+                                    className={`flex-1 py-1 rounded-lg text-[11px] font-medium transition-all border truncate
                     ${prefs.riskProfile === rp
                                             ? "bg-brand-700 border-brand-600 text-white"
                                             : "bg-surface border-surface-border text-slate-400 hover:border-slate-600"}`}

@@ -5,22 +5,26 @@ import type { Contradiction, Uncertainty } from "@/lib/types";
 
 interface ConfidenceIndicatorProps {
     score: number;
+    confidenceLevel?: string;   // "High" | "Moderate" | "Low" from backend
     contradictions: Contradiction[];
     uncertainties: Uncertainty[];
 }
 
 export default function ConfidenceIndicator({
     score,
+    confidenceLevel,
     contradictions,
     uncertainties,
 }: ConfidenceIndicatorProps) {
     const pct = Math.round(score * 100);
     const color = confidenceColor(score);
-    const label = confidenceLabel(score);
+    const label = confidenceLevel ?? confidenceLabel(score);
     const icon = score >= 0.65 ? <ShieldCheck size={16} className="text-emerald-400" /> :
         <ShieldAlert size={16} className="text-amber-400" />;
 
-    const highSeverity = uncertainties.filter(u => u.severity === "high").length;
+    const safeContradictions = contradictions ?? [];
+    const safeUncertainties = uncertainties ?? [];
+    const highSeverity = safeUncertainties.filter(u => u.severity === "high").length;
 
     return (
         <div className="card space-y-4 animate-slide-up">
@@ -30,7 +34,7 @@ export default function ConfidenceIndicator({
                     {icon}
                     <span className="text-sm font-semibold text-white">Confidence & Transparency</span>
                 </div>
-                <span className={`text-xl font-bold ${score >= 0.70 ? "text-emerald-400" : score >= 0.50 ? "text-amber-400" : "text-red-400"}`}>
+                <span className={`text-sm font-bold leading-tight text-right ${score >= 0.70 ? "text-emerald-400" : score >= 0.50 ? "text-amber-400" : "text-red-400"}`}>
                     {pct}%
                 </span>
             </div>
@@ -44,18 +48,18 @@ export default function ConfidenceIndicator({
                 <div className="h-2.5 bg-surface-border rounded-full overflow-hidden">
                     <div
                         className={`h-full ${color} rounded-full transition-all duration-700`}
-                        style={{ width: `${pct}%` }}
+                        style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
                     />
                 </div>
             </div>
 
             {/* Contradiction alerts */}
-            {contradictions.length > 0 && (
+            {safeContradictions.length > 0 && (
                 <div className="space-y-2">
                     <p className="text-xs font-semibold text-amber-400 uppercase tracking-wider">
-                        ⚡ Conflicting Signals ({contradictions.length})
+                        ⚡ Conflicting Signals ({safeContradictions.length})
                     </p>
-                    {contradictions.slice(0, 3).map((c, i) => (
+                    {safeContradictions.slice(0, 3).map((c, i) => (
                         <div key={i} className={`rounded-xl p-3 text-xs flex gap-2 items-start
               ${c.severity === "critical" ? "bg-red-950/50 border border-red-800/50 text-red-300"
                                 : "bg-amber-950/40 border border-amber-800/40 text-amber-300"}`}>
@@ -72,7 +76,7 @@ export default function ConfidenceIndicator({
                     <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1">
                         <Info size={12} /> Data Quality Notes
                     </p>
-                    {uncertainties
+                    {safeUncertainties
                         .filter(u => u.severity === "high")
                         .slice(0, 3)
                         .map((u, i) => (
@@ -84,7 +88,7 @@ export default function ConfidenceIndicator({
                 </div>
             )}
 
-            {contradictions.length === 0 && highSeverity === 0 && (
+            {safeContradictions.length === 0 && highSeverity === 0 && (
                 <p className="text-xs text-emerald-400/80 flex items-center gap-2">
                     <span>✓</span> No contradictions or high-severity issues detected.
                 </p>

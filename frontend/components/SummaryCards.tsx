@@ -69,9 +69,9 @@ export default function SummaryCards({ data }: SummaryCardsProps) {
     return (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in">
             {cards.slice(0, 4).map((card, i) => (
-                <div key={i} className="card flex flex-col gap-3 hover:border-brand-600/40 transition-colors duration-200">
-                    <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">{card.label}</span>
+                <div key={i} className="bg-surface-card border border-surface-border rounded-xl p-4 flex flex-col justify-between hover:border-brand-600/40 transition-colors duration-200">
+                    <div className="flex items-center justify-between mb-3">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{card.label}</span>
                         {card.icon}
                     </div>
                     <div>

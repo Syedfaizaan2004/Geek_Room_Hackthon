@@ -1,5 +1,7 @@
 # 🏦 AI Financial Research Agent
 
+**Live Demo:** [https://geek-room-hackthon.onrender.com/](https://geek-room-hackthon.onrender.com/)
+
 An intelligent, production-grade **Financial & Market Research Agent** that acts as a junior equity research analyst. It provides stock trend forecasting, fundamental analysis, risk detection, peer comparison, scenario stress testing, investment memo generation, and memory-based personalization — all accessible through a sleek Next.js dashboard.
 
 ---

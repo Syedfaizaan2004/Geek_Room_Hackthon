@@ -93,6 +93,8 @@ def quick_research(ticker: str) -> Dict[str, Any]:
 def deep_research(
     ticker: str,
     scenario: str = "recession",
+    *,
+    prefetched: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Run the Deep Research workflow for a ticker.
@@ -134,30 +136,46 @@ def deep_research(
     from backend.agent.synthesizer import synthesize_insights
     from backend.core.company_snapshot import generate_company_snapshot
 
-    logger.info("[workflow:deep_research] Starting for %s | scenario=%s", ticker, scenario)
+    _pf = prefetched or {}
+    logger.info(
+        "[workflow:deep_research] Starting for %s | scenario=%s | prefetched_keys=%s",
+        ticker, scenario, list(_pf.keys()),
+    )
     tool_errors = []
-    
+
     # Generate Snapshot
     snapshot_result = generate_company_snapshot(ticker)
     snapshot = snapshot_result.get("snapshot", [])
 
     # --- Step 1: Forecast ---
-    fc_result   = get_forecast(ticker)
-    fc_data     = fc_result["data"] if fc_result["ok"] else None
+    fc_result = get_forecast(ticker)
+    fc_data   = fc_result["data"] if fc_result["ok"] else None
     if not fc_result["ok"]:
         tool_errors.append(f"forecast: {fc_result['error']}")
+        # Rule 6: trend-based fallback when both models fail
+        fc_data = _make_trend_fallback(ticker, _pf.get("fundamentals"))
+        if fc_data:
+            logger.warning("[workflow:deep_research] Using trend-based forecast fallback for %s", ticker)
 
-    # --- Step 2: Fundamentals ---
-    fund_result = get_fundamentals(ticker)
-    fund_data   = fund_result["data"] if fund_result["ok"] else None
-    if not fund_result["ok"]:
-        tool_errors.append(f"fundamentals: {fund_result['error']}")
+    # --- Step 2: Fundamentals (reuse if prefetched) ---
+    if "fundamentals" in _pf and _pf["fundamentals"] is not None:
+        fund_data = _pf["fundamentals"]
+        logger.info("[workflow:deep_research] Reusing prefetched fundamentals for %s", ticker)
+    else:
+        fund_result = get_fundamentals(ticker)
+        fund_data   = fund_result["data"] if fund_result["ok"] else None
+        if not fund_result["ok"]:
+            tool_errors.append(f"fundamentals: {fund_result['error']}")
 
-    # --- Step 3: Risk ---
-    risk_result = get_risk_analysis(ticker)
-    risk_data   = risk_result["data"] if risk_result["ok"] else None
-    if not risk_result["ok"]:
-        tool_errors.append(f"risk: {risk_result['error']}")
+    # --- Step 3: Risk (reuse if prefetched) ---
+    if "risk" in _pf and _pf["risk"] is not None:
+        risk_data = _pf["risk"]
+        logger.info("[workflow:deep_research] Reusing prefetched risk for %s", ticker)
+    else:
+        risk_result = get_risk_analysis(ticker)
+        risk_data   = risk_result["data"] if risk_result["ok"] else None
+        if not risk_result["ok"]:
+            tool_errors.append(f"risk: {risk_result['error']}")
 
     # --- Step 4: Peer comparison ---
     peer_result = get_peer_comparison(ticker)
@@ -344,4 +362,66 @@ def next_analysis_workflow(user_id: str, ticker: str, mode: str = "quick") -> Di
         "insights": insights,
         "company_snapshot": base_result.get("company_snapshot", []),
         "tool_errors": tool_errors
+    }
+
+
+# ---------------------------------------------------------------------------
+# Private helpers
+# ---------------------------------------------------------------------------
+
+def _make_trend_fallback(
+    ticker: str,
+    fundamentals: Optional[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """
+    Rule 6 — Trend-based forecast fallback.
+
+    Derives a simple directional projection from the fundamentals growth
+    data when both forecasting models fail. Returns None if fundamentals
+    are also unavailable so the caller can decide how to handle it.
+
+    Args:
+        ticker: Stock symbol (for logging).
+        fundamentals: Output of get_fundamentals tool data, or None.
+
+    Returns:
+        dict | None: Minimal forecast envelope compatible with synthesizer,
+                     including a ``fallback: True`` marker so the frontend
+                     can show a "Trend-based projection" notice.
+    """
+    if not fundamentals:
+        return None
+
+    growth = fundamentals.get("growth") or {}
+    rev_trend = growth.get("revenue_growth_trend", "")
+
+    # Map growth classification → directional signal
+    trend_map = {
+        "high_growth":     "upward",
+        "moderate_growth": "upward",
+        "flat":            "neutral",
+        "declining":       "downward",
+    }
+    trend = trend_map.get(rev_trend, "neutral")
+    prob_up = 0.60 if trend == "upward" else 0.40 if trend == "downward" else 0.50
+
+    logger.info(
+        "[_make_trend_fallback] ticker=%s rev_trend=%s → trend=%s prob_up=%.2f",
+        ticker, rev_trend, trend, prob_up,
+    )
+
+    return {
+        "ticker":                   ticker,
+        "supported":                True,
+        "fallback":                 True,
+        "trend":                    trend,
+        "prob_up":                  prob_up,
+        "prob_down":                round(1.0 - prob_up, 2),
+        "confidence":               0.45,           # deliberately modest
+        "expected_movement_percent": round((prob_up - 0.5) * 10, 2),
+        "forecast_horizon_days":    30,
+        "model_agreement":          False,
+        "models_used":              ["trend_fallback"],
+        "tft_output":               None,
+        "xgb_output":               None,
     }

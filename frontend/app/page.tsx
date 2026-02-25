@@ -213,14 +213,38 @@ export default function DashboardPage() {
                 )}
 
                 {/* ── ERROR STATE ── */}
-                {error && !loading && (
-                    <div className="card border-red-800/50 bg-red-950/20 flex items-center justify-between">
-                        <p className="text-red-400 text-sm">{error}</p>
-                        <button onClick={() => handleSubmit()} className="btn-ghost text-xs flex items-center gap-1">
-                            <RefreshCw size={12} /> Retry
-                        </button>
-                    </div>
-                )}
+                {error && !loading && (() => {
+                    const isOffline = /fetch|network|failed to fetch|econnrefused|load failed|networkerror/i.test(error);
+                    return (
+                        <div className={`card flex flex-col gap-2 ${isOffline ? "border-amber-800/50 bg-amber-950/20" : "border-red-800/50 bg-red-950/20"
+                            }`}>
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-lg">{isOffline ? "⚠️" : "❌"}</span>
+                                    <div>
+                                        <p className={`text-sm font-semibold ${isOffline ? "text-amber-400" : "text-red-400"
+                                            }`}>
+                                            {isOffline ? "Backend is offline" : "Request failed"}
+                                        </p>
+                                        {isOffline ? (
+                                            <p className="text-xs text-slate-400 mt-0.5">
+                                                The AI backend is not running. Start it with:
+                                                <code className="ml-1 px-1.5 py-0.5 bg-slate-800 rounded text-slate-200 font-mono text-[11px]">
+                                                    uvicorn backend.app.main:app --port 8000 --reload
+                                                </code>
+                                            </p>
+                                        ) : (
+                                            <p className="text-xs text-slate-400 mt-0.5">{error}</p>
+                                        )}
+                                    </div>
+                                </div>
+                                <button onClick={() => handleSubmit()} className="btn-ghost text-xs flex items-center gap-1 shrink-0">
+                                    <RefreshCw size={12} /> Retry
+                                </button>
+                            </div>
+                        </div>
+                    );
+                })()}
 
                 {/* ── LOADING SKELETONS ── */}
                 {loading && (
@@ -324,10 +348,24 @@ export default function DashboardPage() {
                         </div>
 
                         {/* 5. Next Actions (full width) */}
-                        <NextActions
-                            suggestions={data.next_analysis}
-                            onAction={handleNextAction}
-                        />
+                        {(() => {
+                            const provided = data.next_analysis || [];
+                            const t = data.ticker || "the company";
+                            const fallbacks = [
+                                `Compare ${t} against competitors`,
+                                `Run a recession scenario on ${t}`,
+                                `Forecast trend for ${t}`,
+                                `Deep analysis of ${t} with risks`
+                            ];
+                            const suggestions = Array.from(new Set([...provided, ...fallbacks])).slice(0, 4);
+
+                            return (
+                                <NextActions
+                                    suggestions={suggestions}
+                                    onAction={handleNextAction}
+                                />
+                            );
+                        })()}
 
                         {/* 6. Footer metadata */}
                         <div className="flex items-center justify-between text-xs text-slate-600 border-t border-surface-border pt-4">
