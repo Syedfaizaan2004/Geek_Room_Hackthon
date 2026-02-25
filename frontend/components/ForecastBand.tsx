@@ -65,7 +65,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 export default function ForecastBand({ forecast, ticker }: ForecastBandProps) {
-    if (!forecast || !forecast.supported) {
+    if (!forecast || (!forecast.supported && !(forecast as any).fallback)) {
         return (
             <div className="card flex flex-col items-center justify-center py-10 text-center">
                 <p className="text-slate-400 text-sm">Forecast not available for <strong className="text-white">{ticker}</strong>.</p>
@@ -73,6 +73,8 @@ export default function ForecastBand({ forecast, ticker }: ForecastBandProps) {
             </div>
         );
     }
+
+    const isFallback: boolean = !!(forecast as any).fallback;
 
     // Normalize field names — backend uses 'trend' and nests prob_up inside xgb_output
     const rawDirection = forecast.direction ?? (forecast as any).trend ?? "neutral";
@@ -145,9 +147,16 @@ export default function ForecastBand({ forecast, ticker }: ForecastBandProps) {
                 </ResponsiveContainer>
             </div>
 
-            <p className="text-xs text-slate-500 text-center">
-                Shaded band = uncertainty range. Wider = lower model confidence.
-            </p>
+            {isFallback && (
+                <p className="text-xs text-amber-400/80 text-center flex items-center justify-center gap-1">
+                    <span>⚠</span> Trend-based projection (ensemble model unavailable). Treat with caution.
+                </p>
+            )}
+            {!isFallback && (
+                <p className="text-xs text-slate-500 text-center">
+                    Shaded band = uncertainty range. Wider = lower model confidence.
+                </p>
+            )}
         </div>
     );
 }

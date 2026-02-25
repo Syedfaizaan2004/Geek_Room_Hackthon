@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 # Baseline and limits
 # ---------------------------------------------------------------------------
 
-BASELINE_CONFIDENCE: float = 0.60
+BASELINE_CONFIDENCE: float = 0.55   # Lower floor lets real data earn the score
 
 # Hard floor/ceiling — score is always clipped to this range
 MIN_CONFIDENCE: float = 0.15
@@ -39,33 +39,41 @@ MAX_CONFIDENCE: float = 0.95
 # Named adjustments (signs are applied explicitly in logic below)
 # ---------------------------------------------------------------------------
 
-ADJ_MODEL_AGREE_STRONG:    float = +0.12   # Both models agree with strong signal
-ADJ_MODEL_AGREE_MODERATE:  float = +0.08   # Both agree, moderate signal
-ADJ_MODEL_DISAGREE:        float = -0.10   # Models disagree
+ADJ_MODEL_AGREE_STRONG:    float = +0.12
+ADJ_MODEL_AGREE_MODERATE:  float = +0.08
+ADJ_MODEL_DISAGREE:        float = -0.10
 
-ADJ_EARNINGS_STABLE:       float = +0.08   # Stable, consistent earnings
-ADJ_EARNINGS_MODERATE:     float = +0.02   # Moderate earnings stability
-ADJ_EARNINGS_VOLATILE:     float = -0.10   # Volatile earnings
-ADJ_EARNINGS_INSUFFICIENT: float = -0.05   # Not enough history
+ADJ_EARNINGS_STABLE:       float = +0.08
+ADJ_EARNINGS_MODERATE:     float = +0.02
+ADJ_EARNINGS_VOLATILE:     float = -0.10
+ADJ_EARNINGS_INSUFFICIENT: float = -0.05
 
-ADJ_RISK_LOW:              float = +0.06   # Low overall risk
-ADJ_RISK_MODERATE:         float = +0.00   # Neutral
-ADJ_RISK_HIGH:             float = -0.10   # High overall risk
+ADJ_RISK_LOW:              float = +0.06
+ADJ_RISK_MODERATE:         float = +0.00
+ADJ_RISK_HIGH:             float = -0.10
 
-ADJ_LOW_LEVERAGE:          float = +0.04   # D/E < 0.5
-ADJ_HIGH_LEVERAGE:         float = -0.06   # D/E > 2.0
+ADJ_LOW_LEVERAGE:          float = +0.04
+ADJ_HIGH_LEVERAGE:         float = -0.06
 
-ADJ_DATA_COMPLETE:         float = +0.05   # Few / no missing fields
-ADJ_DATA_POOR:             float = -0.08   # Many missing fields
+ADJ_DATA_COMPLETE:         float = +0.05
+ADJ_DATA_POOR:             float = -0.08
 
-ADJ_SCENARIO_RESILIENT:    float = +0.04   # Confidence stays high under stress
-ADJ_SCENARIO_SENSITIVE:    float = -0.06   # Confidence drops significantly under stress
+ADJ_SCENARIO_RESILIENT:    float = +0.04
+ADJ_SCENARIO_SENSITIVE:    float = -0.06
+
+# Rule 4 — data richness boosts
+ADJ_RICH_FIELDS:           float = +0.10   # ≥ 5 core fields have real values
+ADJ_MULTI_YEAR_EARNINGS:   float = +0.08   # ≥ 3 years of earnings data
+MIN_RICH_FIELDS:           int   = 5
+MIN_EARNINGS_YEARS:        int   = 3
 
 # D/E thresholds
 LOW_LEVERAGE_DE:  float = 0.5
 HIGH_LEVERAGE_DE: float = 2.0
 
-# Missing fields threshold
+# Rule 3 — only flag missing data when > 60% of fields are absent
+MISSING_FRACTION_THRESHOLD: float = 0.60
+# Keep MANY_MISSING_FIELDS for backward compat; will be overridden by fraction check
 MANY_MISSING_FIELDS: int = 5
 
 
@@ -109,6 +117,9 @@ def calculate_confidence(data: Dict[str, Any]) -> float:
 
     # --- Factor 6: Scenario stress sensitivity ---
     score, factors = _apply_scenario_sensitivity(score, factors, scenario)
+
+    # --- Factor 7: Data richness boost (Rules 4 & 5) ---
+    score, factors = _apply_data_richness(score, factors, fundamentals, risk)
 
     final = round(max(MIN_CONFIDENCE, min(MAX_CONFIDENCE, score)), 3)
 
@@ -261,15 +272,16 @@ def _apply_data_completeness(
     if total == 0:
         adj  = ADJ_DATA_POOR
         note = "No financial data found — very low data quality"
-    elif len(missing) >= MANY_MISSING_FIELDS:
+    elif total > 0 and (len(missing) / total) > MISSING_FRACTION_THRESHOLD:
+        # Rule 3: only penalise when truly > 60% of fields are absent
         adj  = ADJ_DATA_POOR
-        note = f"{len(missing)}/{total} financial fields missing — incomplete data"
+        note = f"{len(missing)}/{total} financial fields missing ({len(missing)/total:.0%}) — incomplete data"
     elif len(missing) == 0:
         adj  = ADJ_DATA_COMPLETE
         note = "All financial fields available — high data quality"
     else:
         adj  = 0.0
-        note = f"{len(missing)}/{total} fields missing — acceptable"
+        note = f"{len(missing)}/{total} fields missing ({len(missing)/total:.0%}) — acceptable"
 
     factors.append(_factor("data_completeness", adj, note))
     return score + adj, factors
@@ -308,6 +320,38 @@ def _apply_scenario_sensitivity(
 
 def _factor(name: str, adjustment: float, note: str) -> Dict[str, Any]:
     return {"factor": name, "adjustment": round(adjustment, 3), "note": note}
+
+
+def _apply_data_richness(
+    score: float, factors: List, fundamentals: Dict, risk: Dict
+) -> tuple:
+    """
+    Rules 4 & 5 — positive confidence boosts when real data is present.
+
+    +0.10 when ≥ 5 core financial fields have actual (non-None) values.
+    +0.08 when ≥ 3 years of earnings history exist.
+    """
+    raw       = fundamentals.get("raw_financials") or {}
+    present   = [k for k, v in raw.items() if v is not None]
+    rich_adj  = 0.0
+    rich_note = []
+
+    if len(present) >= MIN_RICH_FIELDS:
+        rich_adj += ADJ_RICH_FIELDS
+        rich_note.append(f"{len(present)} core fields available (+{ADJ_RICH_FIELDS:.2f})")
+
+    years = (risk.get("earnings_stability") or {}).get("total_years_analyzed", 0)
+    if years >= MIN_EARNINGS_YEARS:
+        rich_adj += ADJ_MULTI_YEAR_EARNINGS
+        rich_note.append(f"{years} years of earnings history (+{ADJ_MULTI_YEAR_EARNINGS:.2f})")
+
+    if rich_adj == 0.0:
+        note = "Insufficient data richness — no boost applied"
+    else:
+        note = "; ".join(rich_note)
+
+    factors.append(_factor("data_richness", rich_adj, note))
+    return score + rich_adj, factors
 
 
 def _interpret(score: float) -> str:

@@ -217,13 +217,18 @@ def synthesize_insights(
         "scenario_impact": scenario_impact_line,
         "peer_positioning": peer_positioning_line,
         "confidence": confidence,
+        "confidence_level": _confidence_label(confidence),
         "contradictions": contradictions,
         "uncertainties": uncertainties,
     }
 
+    # Rule 10 — never return completely empty insight lists
+    if not result["strengths"] and not result["risks"] and not result["opportunities"]:
+        result["risks"] = [_outlook_fallback_message(outlook)]
+
     logger.info(
-        "Synthesis for %s: outlook=%s | conf=%.2f | contradictions=%d | uncertainties=%d",
-        ticker, outlook, confidence,
+        "Synthesis for %s: outlook=%s | conf=%.2f | level=%s | contradictions=%d | uncertainties=%d",
+        ticker, outlook, confidence, result["confidence_level"],
         len(contradictions), len(uncertainties),
     )
     return result
@@ -272,3 +277,24 @@ def _dedup(items: List[str]) -> List[str]:
             seen.add(key)
             result.append(item)
     return result
+
+
+def _confidence_label(score: float) -> str:
+    """Map a 0–1 confidence score to a human-readable level label."""
+    if score >= 0.75:
+        return "High"
+    if score >= 0.55:
+        return "Moderate"
+    return "Low"
+
+
+def _outlook_fallback_message(outlook: str) -> str:
+    """Generate a single generic risk/note when all insight lists are empty."""
+    _map = {
+        "positive":            "Analysis data is limited; outlook appears constructive.",
+        "moderately_positive": "Analysis data is limited; mild positive signals detected.",
+        "neutral":             "Analysis data is limited; no strong directional signals.",
+        "cautious":            "Analysis data is limited; exercise caution.",
+        "negative":            "Analysis data is limited; negative signals detected.",
+    }
+    return _map.get(outlook, "Analysis data is limited; interpret with caution.")

@@ -116,13 +116,17 @@ def run_research_agent(
 
     if cached_response:
         elapsed_agent = (time.perf_counter() - t0_agent) * 1000
-        logger.info("[agent] Cache HIT for %s | ms=%.2f", ticker_candidate, elapsed_agent)
+        logger.info("[agent] Cache HIT for %s | ms=%.2f", ticker, elapsed_agent)
         # Add metadata for UI
         cached_response["_performance"] = {
             "total_ms": round(elapsed_agent, 2),
             "source": "cache"
         }
         return cached_response
+
+    # Request-scoped session cache — populated by quick_research, reused by deep_research
+    # to prevent duplicate yfinance calls when mode switches within the same request cycle.
+    _session: Dict[str, Any] = {}
 
     # -----------------------------------------------------------------------
     # Step 1: Load user preferences (non-blocking)
@@ -174,6 +178,9 @@ def run_research_agent(
         investment_memo = {}
         agent_errors.extend(result.get("tool_errors", []))
         workflow_used = "quick_research"
+        # Persist fetched data in session cache for potential deep-mode reuse
+        _session["fundamentals"] = result.get("fundamentals")
+        _session["risk"]         = result.get("risk")
     else:
         if intent == "forecast_only":
             fc_result  = get_forecast(canonical)
@@ -243,7 +250,8 @@ def run_research_agent(
             workflow_used = "next_analysis"
     
         else: # deep_research
-            result       = workflows.deep_research(canonical, scenario=scenario)
+            # Pass session-cached data to avoid re-fetching fundamentals/risk
+            result       = workflows.deep_research(canonical, scenario=scenario, prefetched=_session)
             raw_data     = {k: result[k] for k in
                             ("forecast", "fundamentals", "risk", "peer_comparison", "scenario")}
             insights     = result["insights"]
@@ -301,8 +309,13 @@ def run_research_agent(
     # Step 8: Determine status
     # -----------------------------------------------------------------------
     status = "ok"
+    partial_data = False
     if agent_errors:
-        status = "partial" if raw_data else "failed"
+        if raw_data:
+            status = "partial"
+            partial_data = True
+        else:
+            status = "failed"
 
     logger.info(
         "[agent] Complete for %s | intent=%s | workflow=%s | status=%s",
@@ -343,6 +356,7 @@ def run_research_agent(
         "intent_confidence": confidence,
         "workflow":          workflow_used,
         "confidence":        insights.get("confidence", 0.60),
+        "confidence_level":  insights.get("confidence_level", "Moderate"),
         "contradictions":    insights.get("contradictions", []),
         "uncertainties":     insights.get("uncertainties", []),
         "company_snapshot":  company_snapshot,
@@ -353,6 +367,7 @@ def run_research_agent(
         "next_analysis":     next_analysis,
         "agent_errors":      agent_errors,
         "status":            status,
+        "partial_data":      partial_data,
         "llm_provider":      provider,
         "llm_model":         model,
         "_performance": {

@@ -19,8 +19,9 @@ const SEVERITY_ICON: Record<string, React.ReactNode> = {
 };
 
 export default function RiskAlerts({ uncertainties, riskData }: RiskAlertsProps) {
+    const safeUncertainties = uncertainties ?? [];
     const hiddenRisks = riskData?.hidden_risks ?? [];
-    const hasAlerts = uncertainties.length > 0 || hiddenRisks.length > 0;
+    const hasAlerts = safeUncertainties.length > 0 || hiddenRisks.length > 0;
 
     if (!hasAlerts) {
         return (
@@ -34,7 +35,7 @@ export default function RiskAlerts({ uncertainties, riskData }: RiskAlertsProps)
     }
 
     // Sort: high → medium → low
-    const sorted = [...uncertainties].sort((a, b) => {
+    const sorted = [...safeUncertainties].sort((a, b) => {
         const order = { high: 0, medium: 1, low: 2 } as Record<string, number>;
         return (order[a.severity] ?? 3) - (order[b.severity] ?? 3);
     });
@@ -44,9 +45,9 @@ export default function RiskAlerts({ uncertainties, riskData }: RiskAlertsProps)
             <div className="flex items-center gap-2">
                 <AlertTriangle size={16} className="text-amber-400" />
                 <h3 className="text-sm font-semibold text-white">Risk & Data Quality Alerts</h3>
-                {uncertainties.filter(u => u.severity === "high").length > 0 && (
+                {safeUncertainties.filter(u => u.severity === "high").length > 0 && (
                     <span className="badge-red ml-auto">
-                        {uncertainties.filter(u => u.severity === "high").length} critical
+                        {safeUncertainties.filter(u => u.severity === "high").length} critical
                     </span>
                 )}
             </div>

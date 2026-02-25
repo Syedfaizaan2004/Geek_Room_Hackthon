@@ -30,6 +30,9 @@ logger = logging.getLogger(__name__)
 # Minimum number of financial fields required for "complete" data
 MIN_REQUIRED_FIELDS: int = 5
 
+# Fraction of missing fields above which we emit a "Missing data" flag (Rule 3)
+MISSING_DATA_FRACTION: float = 0.60
+
 # Volatility CV threshold considered "high"
 HIGH_VOLATILITY_CV: float = 0.30
 
@@ -39,7 +42,7 @@ HIGH_SCENARIO_SENSITIVITY: float = 0.80
 # Earnings stability score below which earnings are "volatile"
 LOW_STABILITY_SCORE: float = 0.50
 
-# Minimum years of earnings data for reliable stability assessment
+# Minimum years of earnings data for reliable stability assessment (Rule 3)
 MIN_EARNINGS_YEARS: int = 3
 
 
@@ -88,7 +91,7 @@ def identify_uncertainties(data: Dict[str, Any]) -> List[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 def _flag_missing_financial_data(flags: List, fundamentals: Dict) -> None:
-    """Flag when several core financial metrics are unavailable."""
+    """Flag when a majority of core financial metrics are unavailable (Rule 3 à 60% threshold)."""
     raw = fundamentals.get("raw_financials") or {}
     missing = [k for k, v in raw.items() if v is None]
     total   = len(raw)
@@ -100,13 +103,14 @@ def _flag_missing_financial_data(flags: List, fundamentals: Dict) -> None:
             field    = "fundamentals",
             message  = "No financial data available — all analysis is based on defaults.",
         ))
-    elif len(missing) >= MIN_REQUIRED_FIELDS:
+    elif total > 0 and (len(missing) / total) > MISSING_DATA_FRACTION:
+        # Only flag when truly >60% of fields are absent
         flags.append(_flag(
             type_    = "missing_data",
             severity = "medium",
             field    = "raw_financials",
             message  = (
-                f"{len(missing)}/{total} core financial fields unavailable. "
+                f"{len(missing)}/{total} core financial fields unavailable ({len(missing)/total:.0%}). "
                 "Fundamental analysis may be incomplete or unreliable."
             ),
         ))
@@ -116,7 +120,7 @@ def _flag_volatile_earnings(flags: List, risk: Dict) -> None:
     """Flag earnings instability indicators from the risk engine."""
     stab = risk.get("earnings_stability") or {}
     classification  = stab.get("classification", "")
-    years_analyzed  = stab.get("total_years_analyzed", 0)
+    years_analyzed  = int(stab.get("total_years_analyzed") or 0)   # explicit cast for type safety
     volatility_cv   = stab.get("volatility_cv")
 
     if classification in ("highly_volatile", "volatile"):
@@ -129,7 +133,10 @@ def _flag_volatile_earnings(flags: List, risk: Dict) -> None:
                 "High earnings volatility reduces forecast reliability."
             ),
         ))
-    elif classification == "insufficient_data" or years_analyzed < MIN_EARNINGS_YEARS:
+    elif classification == "insufficient_data" or (
+        0 < years_analyzed < MIN_EARNINGS_YEARS
+    ):
+        # Rule 3: only flag if data truly < 3 years
         flags.append(_flag(
             type_    = "insufficient_earnings_history",
             severity = "medium",
@@ -140,7 +147,7 @@ def _flag_volatile_earnings(flags: List, risk: Dict) -> None:
             ),
         ))
 
-    if volatility_cv is not None and volatility_cv > HIGH_VOLATILITY_CV:
+    if volatility_cv is not None and isinstance(volatility_cv, (int, float)) and float(volatility_cv) > HIGH_VOLATILITY_CV:
         flags.append(_flag(
             type_    = "high_earnings_volatility_cv",
             severity = "medium",

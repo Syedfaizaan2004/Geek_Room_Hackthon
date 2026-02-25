@@ -49,20 +49,23 @@ export default function PeerComparison({ data, ticker }: PeerComparisonProps) {
 
             {/* Summary points */}
             {data.summary && data.summary.length > 0 && (
-                <ul className="space-y-2">
-                    {data.summary.slice(0, 5).map((point, i) => {
-                        const isPositive = /better|above|strong|outperform|higher/i.test(point);
-                        const isNegative = /weaker|below|under|lag|lower/i.test(point);
-                        return (
-                            <li key={i} className="flex items-start gap-2 text-xs text-slate-300">
-                                <span className={`mt-0.5 font-bold shrink-0 ${isPositive ? "text-emerald-400" : isNegative ? "text-red-400" : "text-slate-400"}`}>
-                                    {isPositive ? "↑" : isNegative ? "↓" : "→"}
-                                </span>
-                                {point}
-                            </li>
-                        );
-                    })}
-                </ul>
+                <div className="bg-surface-border/20 border border-surface-border/40 rounded-xl p-4 mt-2">
+                    <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Executive Summary</h4>
+                    <ul className="space-y-3">
+                        {data.summary.slice(0, 5).map((point, i) => {
+                            const isPositive = /better|above|strong|outperform|higher|competitive advantage|leads/i.test(point);
+                            const isNegative = /weaker|below|under|lag|lower|behind|struggles/i.test(point);
+                            return (
+                                <li key={i} className="flex items-start gap-2.5 text-xs text-slate-300 leading-relaxed">
+                                    <span className={`mt-0.5 font-bold shrink-0 ${isPositive ? "text-emerald-400" : isNegative ? "text-red-400" : "text-blue-400"}`}>
+                                        {isPositive ? "↑" : isNegative ? "↓" : "→"}
+                                    </span>
+                                    {point}
+                                </li>
+                            );
+                        })}
+                    </ul>
+                </div>
             )}
         </div>
     );
