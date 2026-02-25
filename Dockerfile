@@ -20,7 +20,8 @@ RUN npm ci
 
 # Copy source and build standalone bundle
 COPY frontend/ ./
-ENV NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
+ARG NEXT_PUBLIC_API_URL="http://127.0.0.1:8000"
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 RUN npm run build
 
 
@@ -48,7 +49,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # ── 2. Python dependencies ─────────────────────────────────────
-COPY requirements.txt ./
 
 # Install PyTorch CPU-only FIRST (separate layer for better caching
 # and to use the dedicated CPU wheel index).
@@ -57,6 +57,7 @@ RUN pip install --no-cache-dir \
     --index-url https://download.pytorch.org/whl/cpu
 
 # Install the rest of the requirements
+COPY requirements.txt ./
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 
@@ -81,6 +82,8 @@ COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Render assigns PORT dynamically; expose both internal ports for docs
-EXPOSE 8000 3000
+ARG BACKEND_PORT=8000
+ARG FRONTEND_PORT=3000
+EXPOSE $BACKEND_PORT $FRONTEND_PORT
 
 ENTRYPOINT ["docker-entrypoint.sh"]
