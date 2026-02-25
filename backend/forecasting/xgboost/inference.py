@@ -123,10 +123,28 @@ class XGBPredictor:
                 "Install it with: pip install yfinance"
             ) from exc
 
-        logger.info("Fetching 90-day OHLCV data for %s via yfinance...", ticker)
-        df = yf.download(ticker, period="90d", interval="1d", progress=False, auto_adjust=True)
+        # Use OHLCV cache (15 min TTL) to avoid 429 rate limiting on repeated calls
+        _ohlcv_cache_key = f"ohlcv:{ticker.upper()}"
+        df = None
+        try:
+            from backend.utils.cache import get_cached_result, cache_result
+            df = get_cached_result(_ohlcv_cache_key)
+        except Exception:
+            pass
 
-        if df.empty or len(df) < 30:
+        if df is None:
+            logger.info("Fetching 90-day OHLCV data for %s via yfinance...", ticker)
+            df = yf.download(ticker, period="90d", interval="1d", progress=False, auto_adjust=True)
+            if not df.empty and len(df) >= 30:
+                try:
+                    from backend.utils.cache import cache_result
+                    cache_result(_ohlcv_cache_key, df, ttl=900)  # 15 min
+                except Exception:
+                    pass
+        else:
+            logger.info("Using cached OHLCV data for %s (%d rows)", ticker, len(df))
+
+        if df is None or df.empty or len(df) < 30:
             raise RuntimeError(
                 f"Insufficient market data returned for ticker '{ticker}'. "
                 "Check internet connection or try again later."

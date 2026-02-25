@@ -138,3 +138,7 @@ def key_agent(ticker: str, workflow: str) -> str:
 
 def key_demo(ticker: str) -> str:
     return f"demo:{ticker.upper()}"
+
+def key_yf_info(ticker: str) -> str:
+    """Cache key for raw yfinance .info dict."""
+    return f"yf_info:{ticker.upper()}"

@@ -116,7 +116,7 @@ def run_research_agent(
 
     if cached_response:
         elapsed_agent = (time.perf_counter() - t0_agent) * 1000
-        logger.info("[agent] Cache HIT for %s | ms=%.2f", ticker_candidate, elapsed_agent)
+        logger.info("[agent] Cache HIT for %s | ms=%.2f", ticker, elapsed_agent)
         # Add metadata for UI
         cached_response["_performance"] = {
             "total_ms": round(elapsed_agent, 2),

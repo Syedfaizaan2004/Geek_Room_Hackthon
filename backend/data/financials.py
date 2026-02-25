@@ -157,9 +157,15 @@ def fetch_financial_statements(ticker: str) -> Dict[str, Any]:
         logger.warning("Cash flow unavailable for %s: %s", ticker, exc)
         cash_flow = None
 
-    # --- Key Stats / Info ---
+    # --- Key Stats / Info (cached to avoid repeated 429 hits) ---
     try:
-        info = stock.info or {}
+        from backend.utils.cache import get_cached_result, cache_result, key_yf_info
+        _ck = key_yf_info(ticker)
+        info = get_cached_result(_ck)
+        if info is None:
+            info = stock.info or {}
+            if info:
+                cache_result(_ck, info, ttl=900)  # 15 min
     except Exception as exc:
         logger.warning("Info unavailable for %s: %s", ticker, exc)
         info = {}

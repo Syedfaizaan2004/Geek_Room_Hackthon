@@ -86,10 +86,16 @@ class TFTPredictor:
         import torch
         from pytorch_forecasting import TemporalFusionTransformer
 
-        # --- Load dataset parameters ---
+        # --- Load dataset parameters (validate against corrupt pickle) ---
         logger.info("Loading TFT dataset parameters from: %s", self._params_path)
-        with open(self._params_path, "rb") as f:
-            self._dataset_params = pickle.load(f)
+        try:
+            with open(self._params_path, "rb") as f:
+                self._dataset_params = pickle.load(f)
+        except Exception as exc:
+            raise RuntimeError(
+                f"TFT dataset params file appears corrupted: {exc}. "
+                "Re-train or replace tft_dataset_params.pkl."
+            ) from exc
         logger.info("TFT dataset parameters loaded ✅")
 
         # --- Load model checkpoint ---

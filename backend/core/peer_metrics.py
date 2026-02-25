@@ -72,17 +72,23 @@ def fetch_peer_metrics(tickers: List[str]) -> Dict[str, Dict[str, Any]]:
 
     results: Dict[str, Dict[str, Any]] = {}
 
-    for ticker in tickers:
+    def _fetch_one(ticker: str) -> tuple[str, Dict[str, Any]]:
         logger.info("Fetching metrics for peer: %s", ticker)
         try:
-            info = yf.Ticker(ticker).info or {}
+            # Reuse shared yfinance info cache to avoid repeated 429 hits
+            from backend.utils.cache import get_cached_result, cache_result, key_yf_info
+            _ck = key_yf_info(ticker)
+            info = get_cached_result(_ck)
+            if info is None:
+                info = yf.Ticker(ticker).info or {}
+                if info:
+                    cache_result(_ck, info, ttl=900)  # 15 min
         except Exception as exc:  # pylint: disable=broad-except
             logger.warning("Could not fetch info for %s: %s", ticker, exc)
             info = {}
 
         if not info:
-            results[ticker] = _empty_metrics(ticker, data_available=False)
-            continue
+            return ticker, _empty_metrics(ticker, data_available=False)
 
         # --- Net margin: yfinance returns decimal (0.23) → convert to % ---
         raw_net_margin = _safe_float(info.get("profitMargins"))
@@ -96,7 +102,7 @@ def fetch_peer_metrics(tickers: List[str]) -> Dict[str, Dict[str, Any]]:
         raw_rev_growth = _safe_float(info.get("revenueGrowth"))
         revenue_growth = round(raw_rev_growth * 100, 2) if raw_rev_growth is not None else None
 
-        results[ticker] = {
+        return ticker, {
             "ticker": ticker,
             "company_name": info.get("longName") or info.get("shortName") or ticker,
             "sector": info.get("sector"),
@@ -109,7 +115,20 @@ def fetch_peer_metrics(tickers: List[str]) -> Dict[str, Dict[str, Any]]:
             "market_cap": _safe_float(info.get("marketCap")),
             "data_available": True,
         }
-        logger.debug("Metrics for %s: %s", ticker, results[ticker])
+
+    # Fetch all peers in parallel — max 6 workers is safe for Yahoo Finance
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    with ThreadPoolExecutor(max_workers=min(len(tickers), 6)) as executor:
+        futures = {executor.submit(_fetch_one, t): t for t in tickers}
+        for future in as_completed(futures):
+            try:
+                ticker, metrics = future.result()
+                results[ticker] = metrics
+                logger.debug("Metrics for %s: %s", ticker, metrics)
+            except Exception as exc:  # pylint: disable=broad-except
+                t = futures[future]
+                logger.warning("Parallel fetch failed for %s: %s", t, exc)
+                results[t] = _empty_metrics(t, data_available=False)
 
     return results
 
