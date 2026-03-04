@@ -1,5 +1,1 @@
-"""
-backend/api/__init__.py
-
-Marks the `api` directory as a Python package.
-"""
+"""api/__init__.py — API package root."""

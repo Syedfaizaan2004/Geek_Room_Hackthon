@@ -1,0 +1,217 @@
+/* globals.css additions for Phase 17 — appended to existing globals */
+
+/* ── Micro-interaction utilities ─────────────────────────────────────────── */
+.fade-in {
+    animation: fadeIn 0.4s ease-out both;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.slide-in {
+    animation: slideIn 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateX(-16px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.pulse-subtle {
+    animation: pulseSub 2s ease-in-out infinite;
+}
+
+@keyframes pulseSub {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.7;
+    }
+}
+
+/* ── Card hover lift ─────────────────────────────────────────────────────── */
+.card-hover {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
+/* ── Tooltip ─────────────────────────────────────────────────────────────── */
+.tooltip-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+.tooltip-wrap .tooltip-box {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(15, 23, 42, 0.97);
+    color: #cbd5e1;
+    font-size: 11px;
+    line-height: 1.5;
+    padding: 7px 10px;
+    border-radius: 8px;
+    white-space: nowrap;
+    max-width: 220px;
+    white-space: normal;
+    text-align: center;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    z-index: 100;
+    transition: opacity 0.18s ease;
+}
+
+.tooltip-wrap:hover .tooltip-box {
+    visibility: visible;
+    opacity: 1;
+}
+
+/* ── Outlook banners ─────────────────────────────────────────────────────── */
+.banner-bull {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(5, 150, 105, 0.06) 100%);
+    border-left: 4px solid #10b981;
+}
+
+.banner-bear {
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.12) 0%, rgba(185, 28, 28, 0.06) 100%);
+    border-left: 4px solid #ef4444;
+}
+
+.banner-neut {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(180, 83, 9, 0.06) 100%);
+    border-left: 4px solid #f59e0b;
+}
+
+/* ── Animated number counter ─────────────────────────────────────────────── */
+.num-counter {
+    display: inline-block;
+    font-variant-numeric: tabular-nums;
+    transition: all 0.6s ease;
+}
+
+/* ── Risk badge ──────────────────────────────────────────────────────────── */
+.risk-badge-high {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.risk-badge-mod {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.risk-badge-low {
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+/* ── Confidence ring SVG ─────────────────────────────────────────────────── */
+.conf-ring-track {
+    stroke: rgba(255, 255, 255, 0.07);
+}
+
+.conf-ring-fill {
+    stroke-linecap: round;
+    transition: stroke-dashoffset 1s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Export button ───────────────────────────────────────────────────────── */
+.btn-export {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-muted);
+    transition: all 0.18s ease;
+}
+
+.btn-export:hover {
+    background: rgba(255, 255, 255, 0.09);
+    color: white;
+    border-color: rgba(255, 255, 255, 0.18);
+}
+
+/* ── Memory highlight ────────────────────────────────────────────────────── */
+.memory-banner {
+    background: linear-gradient(90deg, rgba(99, 102, 241, 0.15) 0%, rgba(139, 92, 246, 0.08) 100%);
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    border-radius: 12px;
+    padding: 12px 16px;
+}
+
+/* ── Transparency panel ──────────────────────────────────────────────────── */
+.details-panel summary {
+    list-style: none;
+    cursor: pointer;
+}
+
+.details-panel summary::-webkit-details-marker {
+    display: none;
+}
+
+/* ── Collapsible chevron animation ──────────────────────────────────────── */
+details[open] .chev {
+    transform: rotate(180deg);
+}
+
+.chev {
+    transition: transform 0.25s ease;
+}
+
+/* ── Data freshness bar ──────────────────────────────────────────────────── */
+.freshness-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+}
+
+.freshness-live {
+    background: #10b981;
+    box-shadow: 0 0 6px #10b981;
+    animation: pulseSub 2s ease-in-out infinite;
+}
+
+.freshness-cached {
+    background: #f59e0b;
+}
+
+.freshness-demo {
+    background: #6366f1;
+}

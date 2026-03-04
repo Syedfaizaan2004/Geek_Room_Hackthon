@@ -1,0 +1,39 @@
+services:
+  # ----------------------------------------------------
+  # Backend FastAPI Service
+  # ----------------------------------------------------
+  - type: web
+    name: ai-financial-agent-backend
+    env: docker
+    region: ohio
+    plan: free # Change to a paid plan if required
+    rootDir: backend
+    dockerfilePath: Dockerfile
+    healthCheckPath: /api/v1/health # Change if your health check path is different (or root /health)
+    envVars:
+      - key: APP_ENV
+        value: production
+      # Add database URLs, API Keys (e.g., GEMINI_API_KEY) and Qdrant credentials here or dynamically via Render Dashboard
+      - key: GEMINI_API_KEY
+        sync: false
+
+  # ----------------------------------------------------
+  # Frontend Next.js Service
+  # ----------------------------------------------------
+  - type: web
+    name: ai-financial-agent-frontend
+    env: docker
+    region: ohio
+    plan: free # Change to a paid plan if required
+    rootDir: frontend
+    dockerfilePath: Dockerfile
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Read the API URL produced by the backend service deployment
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: ai-financial-agent-backend
+          property: host
+        # NOTE: Render sets `property: host` to the auto-generated URL (e.g. https://my-backend.onrender.com)

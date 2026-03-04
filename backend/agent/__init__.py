@@ -1,1 +1,1 @@
-"""backend/agent/__init__.py — package marker for the agent module."""
+"""agent/__init__.py — Agent package root."""

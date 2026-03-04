@@ -1,289 +1,210 @@
 """
-backend/utils/contradiction_detector.py
+utils/contradiction_detector.py — Rule-based logical contradiction detection (Phase 11).
 
-Contradiction detection module for the AI Research Agent.
+Detects inconsistencies between engine outputs. Each rule checks two or more
+computed metric values and raises a ContradictionItem if they conflict.
 
-Identifies conflicting signals across forecast, fundamental, risk, peer,
-and scenario analysis outputs. Each contradiction is independently detected
-using deterministic if-else rules applied to structured data — no LLM.
-
-Each detected contradiction is a dict with:
-    type       (str)   — contradiction category
-    severity   (str)   — 'critical' | 'warning' | 'note'
-    signal_a   (str)   — first conflicting signal description
-    signal_b   (str)   — second conflicting signal description
-    message    (str)   — human-readable contradiction summary
-
-Contradictions with severity='critical' should prominently appear in memos.
+Rules are deterministic — no LLM, no heuristic guessing.
 """
 
-from __future__ import annotations
-
 import logging
-from typing import Any, Dict, List, Optional
+from typing import List, Dict, Any
+
+from schemas.confidence import ContradictionItem
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Thresholds (named constants — no magic numbers)
-# ---------------------------------------------------------------------------
 
-# Probability above which forecast is considered "strong bullish"
-BULLISH_PROB_THRESHOLD: float = 0.60
-
-# Net margin below which profitability is considered weak despite forecast
-WEAK_MARGIN_THRESHOLD: float = 5.0
-
-# D/E ratio above which leverage is "high"
-HIGH_DE_THRESHOLD: float = 2.0
-
-# Revenue growth rate considered "high growth"
-HIGH_GROWTH_THRESHOLD: float = 15.0
-
-# FCF-to-net-income ratio below which cash flow quality is "poor"
-POOR_FCF_RATIO_THRESHOLD: float = 0.50
-
-# Net margin considered "high profitability"
-HIGH_MARGIN_THRESHOLD: float = 15.0
-
-
-def detect_contradictions(data: Dict[str, Any]) -> List[Dict[str, Any]]:
+def detect_contradictions(
+    market: Dict[str, Any],
+    forecast: Dict[str, Any],
+    fundamentals: Dict[str, Any],
+    risk: Dict[str, Any],
+) -> List[ContradictionItem]:
     """
-    Detect conflicting signals across all available analysis outputs.
+    Run all contradiction rules across engine outputs.
 
-    Runs a suite of independent contradiction checks. Each check is
-    fault-tolerant — failures in one check do not affect others.
-
-    Args:
-        data (dict): Combined analysis output. Expected keys (all optional):
-            forecast        (dict) — ensemble forecast output
-            fundamentals    (dict) — financial analysis output
-            risk            (dict) — risk intelligence output
-            scenario        (dict) — scenario stress output
-            insights        (dict) — synthesizer output
-            peer_comparison (dict) — peer analysis output
-
-    Returns:
-        list[dict]: List of detected contradictions, each with:
-            type, severity, signal_a, signal_b, message
+    Returns a list of ContradictionItems (may be empty if no conflicts found).
     """
-    contradictions: List[Dict[str, Any]] = []
+    contradictions: List[ContradictionItem] = []
 
-    forecast     = data.get("forecast")     or {}
-    fundamentals = data.get("fundamentals") or {}
-    risk         = data.get("risk")         or {}
-    scenario     = data.get("scenario")     or {}
-    insights     = data.get("insights")     or {}
+    # Guard — skip rules if data isn't available
+    _check_growth_margin_conflict(fundamentals, contradictions)
+    _check_bullish_forecast_high_risk(forecast, risk, contradictions)
+    _check_strong_health_weak_liquidity(fundamentals, contradictions)
+    _check_low_risk_high_volatility(risk, market, contradictions)
+    _check_positive_earnings_negative_fcf(fundamentals, contradictions)
+    _check_bullish_trend_high_risk(market, risk, contradictions)
+    _check_overvalued_peer_but_bearish(forecast, fundamentals, contradictions)
 
-    prof    = fundamentals.get("profitability") or {}
-    val     = fundamentals.get("valuation")     or {}
-    lev     = fundamentals.get("leverage")      or {}
-    growth  = fundamentals.get("growth")        or {}
-    eff     = fundamentals.get("efficiency")    or {}
+    if contradictions:
+        logger.info(f"Contradiction detector found {len(contradictions)} conflict(s)")
 
-    # Run all checks
-    _check_bullish_forecast_weak_fundamentals(contradictions, forecast, prof)
-    _check_high_growth_rising_leverage(contradictions, growth, lev)
-    _check_profitable_negative_cashflow(contradictions, prof, eff)
-    _check_bullish_outlook_high_risk(contradictions, insights, risk)
-    _check_bullish_trend_recession_sensitivity(contradictions, forecast, scenario)
-    _check_positive_outlook_margin_stress(contradictions, insights, scenario)
-    _check_strong_forecast_volatile_earnings(contradictions, forecast, risk)
-    _check_high_pe_weak_growth(contradictions, val, growth)
-
-    logger.info(
-        "[contradiction_detector] Detected %d contradiction(s)", len(contradictions)
-    )
     return contradictions
 
 
-# ---------------------------------------------------------------------------
-# Individual contradiction checks
-# ---------------------------------------------------------------------------
+# ── Individual Rules ──────────────────────────────────────────────────────────
 
-def _check_bullish_forecast_weak_fundamentals(
-    out: List, forecast: Dict, prof: Dict
+def _check_growth_margin_conflict(
+    funds: Dict[str, Any], out: List[ContradictionItem]
 ) -> None:
-    """Strong bullish forecast but fundamentals show weak profitability."""
-    prob_up = forecast.get("prob_up") or forecast.get("probability_up")
-    nm      = prof.get("net_profit_margin")
+    """High revenue growth but simultaneously declining margins = efficiency concern."""
+    if not funds:
+        return
+    rev_growth = funds.get("revenue_growth_yoy", None)
+    net_margin = funds.get("net_margin", None)
+    op_margin = funds.get("operating_margin", None)
 
-    if prob_up is not None and nm is not None:
-        if prob_up >= BULLISH_PROB_THRESHOLD and nm < WEAK_MARGIN_THRESHOLD:
-            out.append(_contradiction(
-                type_    = "forecast_vs_fundamentals",
-                severity = "warning",
-                signal_a = f"forecast prob_up={prob_up:.0%} (bullish)",
-                signal_b = f"net margin={nm:.1f}% (weak)",
-                message  = (
-                    f"Model forecasts bullish price move ({prob_up:.0%} probability up) "
-                    f"but net profit margin is only {nm:.1f}% — may not be fundamentally justified."
-                ),
-            ))
+    if rev_growth is None or net_margin is None:
+        return
 
+    # High growth (>15%) but negative/very low net margin
+    if rev_growth > 0.15 and net_margin < 0.02:
+        out.append(ContradictionItem(
+            type="growth_margin_conflict",
+            explanation=(
+                f"Revenue is growing strongly ({rev_growth:.1%} YoY) but net margin "
+                f"is only {net_margin:.1%}. Growth is not converting to profitability — "
+                "possible cost-scaling problem or aggressive reinvestment."
+            )
+        ))
 
-def _check_high_growth_rising_leverage(
-    out: List, growth: Dict, lev: Dict
-) -> None:
-    """High revenue growth paired with high or rising debt — could be debt-funded growth."""
-    rev_growth = growth.get("revenue_growth_yoy") or growth.get("avg_revenue_growth")
-    de_ratio   = lev.get("debt_to_equity")
-
-    if rev_growth is not None and de_ratio is not None:
-        if rev_growth > HIGH_GROWTH_THRESHOLD and de_ratio > HIGH_DE_THRESHOLD:
-            out.append(_contradiction(
-                type_    = "growth_vs_leverage",
-                severity = "warning",
-                signal_a = f"revenue growth={rev_growth:.1f}% (high)",
-                signal_b = f"D/E ratio={de_ratio:.2f} (elevated)",
-                message  = (
-                    f"High revenue growth ({rev_growth:.1f}%) appears to be partially "
-                    f"debt-funded (D/E={de_ratio:.2f}). Leverage amplifies downside risk."
-                ),
-            ))
-
-
-def _check_profitable_negative_cashflow(
-    out: List, prof: Dict, eff: Dict
-) -> None:
-    """Profitable on income statement but FCF is negative — earnings quality concern."""
-    nm  = prof.get("net_profit_margin")
-    fcf = eff.get("free_cash_flow")
-
-    if nm is not None and fcf is not None:
-        if nm > HIGH_MARGIN_THRESHOLD and fcf < 0:
-            out.append(_contradiction(
-                type_    = "profitability_vs_cashflow",
-                severity = "critical",
-                signal_a = f"net margin={nm:.1f}% (strong profitability)",
-                signal_b = f"free cash flow={fcf:,.0f} (negative)",
-                message  = (
-                    f"Reports strong net margin ({nm:.1f}%) but free cash flow is negative "
-                    f"({fcf:,.0f}). This suggests potential earnings quality issues — "
-                    "accruals may exceed cash generation."
-                ),
-            ))
-
-
-def _check_bullish_outlook_high_risk(
-    out: List, insights: Dict, risk: Dict
-) -> None:
-    """Overall outlook is positive/moderately positive but risk level is 'high'."""
-    outlook      = insights.get("outlook", "")
-    overall_risk = risk.get("overall_risk", "")
-
-    if outlook in ("positive", "moderately_positive") and overall_risk == "high":
-        out.append(_contradiction(
-            type_    = "outlook_vs_risk",
-            severity = "critical",
-            signal_a = f"outlook={outlook}",
-            signal_b = "overall risk=HIGH",
-            message  = (
-                f"Outlook is '{outlook}' but overall risk rating is HIGH. "
-                "Multiple risk indicators are elevated — positive outlook may not be sustainable."
-            ),
+    # Positive growth but declining operating margin (proxy: op < net suggests expense surge)
+    if op_margin is not None and rev_growth > 0.05 and op_margin < 0.0:
+        out.append(ContradictionItem(
+            type="growth_negative_operating_margin",
+            explanation=(
+                f"Revenue growing ({rev_growth:.1%} YoY) but operating margin is negative "
+                f"({op_margin:.1%}). Operations are unprofitable despite top-line momentum."
+            )
         ))
 
 
-def _check_bullish_trend_recession_sensitivity(
-    out: List, forecast: Dict, scenario: Dict
+def _check_bullish_forecast_high_risk(
+    forecast: Dict[str, Any], risk: Dict[str, Any], out: List[ContradictionItem]
 ) -> None:
-    """Bullish forecast trend but scenario analysis shows bearish direction under recession."""
-    direction   = str(forecast.get("direction", "")).lower()
-    scen_dir    = (scenario.get("forecast_adjustment") or {}).get("direction", "")
+    """Forecast is optimistic but composite risk score paints a dangerous picture."""
+    if not forecast or not risk:
+        return
 
-    if direction in ("up", "upward") and scen_dir == "bearish":
-        out.append(_contradiction(
-            type_    = "forecast_vs_scenario",
-            severity = "warning",
-            signal_a = "base forecast direction: bullish",
-            signal_b = "recession scenario: bearish directional bias",
-            message  = (
-                "Forecast is bullish under base conditions but turns bearish under a "
-                "recession scenario — significant macro sensitivity. "
-                "Bull case is conditional on benign macro environment."
-            ),
+    prob_bull = forecast.get("probability_bullish", 50.0)
+    risk_score = risk.get("composite_risk_score", 50.0)
+
+    if prob_bull > 65 and risk_score > 70:
+        out.append(ContradictionItem(
+            type="bullish_forecast_high_risk",
+            explanation=(
+                f"Statistical forecast shows {prob_bull:.0f}% bullish probability, "
+                f"but composite risk score is critically high at {risk_score:.0f}/100. "
+                "Momentum signals conflict with structural risk — treat with caution."
+            )
         ))
 
 
-def _check_positive_outlook_margin_stress(
-    out: List, insights: Dict, scenario: Dict
+def _check_strong_health_weak_liquidity(
+    funds: Dict[str, Any], out: List[ContradictionItem]
 ) -> None:
-    """Positive outlook but severe margin compression under stress scenario."""
-    outlook        = insights.get("outlook", "")
-    margin_stress  = scenario.get("margin_stress") or {}
-    adj_margin     = margin_stress.get("adjusted_margin")
-    margin_state   = margin_stress.get("margin_state", "")
+    """Balance sheet classified as 'strong' but current ratio is dangerously low."""
+    if not funds:
+        return
 
-    if outlook in ("positive", "moderately_positive") and margin_state == "loss_making":
-        out.append(_contradiction(
-            type_    = "outlook_vs_stress",
-            severity = "critical",
-            signal_a = f"outlook={outlook}",
-            signal_b = f"scenario margin state={margin_state} (adj margin={adj_margin})",
-            message  = (
-                f"Outlook is '{outlook}' but company becomes loss-making under stress scenario "
-                f"(stressed margin: {adj_margin}%). Risk of significant reversal under macro shock."
-            ),
+    classification = funds.get("classification", "")
+    current_ratio = funds.get("current_ratio", None)
+
+    if classification in ("strong", "stellar") and current_ratio is not None and current_ratio < 1.0:
+        out.append(ContradictionItem(
+            type="strong_health_weak_liquidity",
+            explanation=(
+                f"Fundamental classification is '{classification}' but current ratio is "
+                f"{current_ratio:.2f}x — below 1.0, indicating short-term obligations may "
+                "not be fully covered by liquid assets. Liquidity risk is underrepresented."
+            )
         ))
 
 
-def _check_strong_forecast_volatile_earnings(
-    out: List, forecast: Dict, risk: Dict
+def _check_low_risk_high_volatility(
+    risk: Dict[str, Any], market: Dict[str, Any], out: List[ContradictionItem]
 ) -> None:
-    """Model signals high confidence but earnings historically volatile."""
-    fc_confidence   = forecast.get("confidence") or forecast.get("forecast_confidence")
-    earnings_stab   = risk.get("earnings_stability") or {}
-    classification  = earnings_stab.get("classification", "")
+    """Risk engine labels composite risk as low but market volatility is extremely high."""
+    if not risk or not market:
+        return
 
-    if fc_confidence is not None and fc_confidence > 0.70:
-        if classification in ("highly_volatile", "volatile"):
-            out.append(_contradiction(
-                type_    = "forecast_vs_earnings_stability",
-                severity = "warning",
-                signal_a = f"forecast confidence={fc_confidence:.0%} (high)",
-                signal_b = f"earnings stability={classification}",
-                message  = (
-                    f"Forecast confidence is high ({fc_confidence:.0%}) but historical earnings "
-                    f"are {classification}. High forecast confidence may be overstated "
-                    "given unpredictable earnings history."
-                ),
-            ))
+    risk_score = risk.get("composite_risk_score", 50.0)
+    volatility = market.get("volatility_percent", 0.0)
+
+    if risk_score < 30 and volatility > 40:
+        out.append(ContradictionItem(
+            type="low_risk_high_volatility",
+            explanation=(
+                f"Composite risk score is low ({risk_score:.0f}/100) but market volatility "
+                f"is very high at {volatility:.1f}%. Structural risk metrics appear benign "
+                "while price behavior suggests the market is pricing in significant uncertainty."
+            )
+        ))
 
 
-def _check_high_pe_weak_growth(
-    out: List, val: Dict, growth: Dict
+def _check_positive_earnings_negative_fcf(
+    funds: Dict[str, Any], out: List[ContradictionItem]
 ) -> None:
-    """Valuation premium (high P/E) not supported by revenue growth."""
-    pe    = val.get("pe_ratio")
-    gr    = growth.get("revenue_growth_yoy") or growth.get("avg_revenue_growth")
+    """Net income is positive (profitable) but free cash flow is deeply negative."""
+    if not funds:
+        return
 
-    if pe is not None and gr is not None:
-        if pe > 30 and gr < 5.0:
-            out.append(_contradiction(
-                type_    = "valuation_vs_growth",
-                severity = "warning",
-                signal_a = f"PE ratio={pe:.1f} (premium valuation)",
-                signal_b = f"revenue growth={gr:.1f}% (low)",
-                message  = (
-                    f"Trades at a premium P/E of {pe:.1f}x but revenue growth is only "
-                    f"{gr:.1f}%. Premium valuation lacks a high-growth justification — "
-                    "valuation compression risk if growth disappoints."
-                ),
-            ))
+    net_margin = funds.get("net_margin", None)
+    fcf = funds.get("free_cash_flow", None)
+
+    if net_margin is None or fcf is None:
+        return
+
+    if net_margin > 0.05 and fcf < 0:
+        out.append(ContradictionItem(
+            type="positive_earnings_negative_fcf",
+            explanation=(
+                f"Net margin is positive ({net_margin:.1%}) suggesting accounting profit, "
+                "but free cash flow is negative. This implies heavy capital expenditure, "
+                "aggressive working capital build, or possible accrual-vs-cash divergence."
+            )
+        ))
 
 
-# ---------------------------------------------------------------------------
-# Helper
-# ---------------------------------------------------------------------------
+def _check_bullish_trend_high_risk(
+    market: Dict[str, Any], risk: Dict[str, Any], out: List[ContradictionItem]
+) -> None:
+    """Price trend is bullish but structural risk score is dangerously high."""
+    if not market or not risk:
+        return
 
-def _contradiction(
-    type_: str, severity: str, signal_a: str, signal_b: str, message: str
-) -> Dict[str, Any]:
-    return {
-        "type":     type_,
-        "severity": severity,
-        "signal_a": signal_a,
-        "signal_b": signal_b,
-        "message":  message,
-    }
+    trend = market.get("trend_direction", "")
+    risk_score = risk.get("composite_risk_score", 50.0)
+
+    if trend == "bullish" and risk_score > 75:
+        out.append(ContradictionItem(
+            type="bullish_trend_high_structural_risk",
+            explanation=(
+                f"Price action shows bullish momentum but the composite structural risk "
+                f"score is {risk_score:.0f}/100 — critically elevated. The market may be "
+                "ignoring underlying balance sheet or leverage deterioration."
+            )
+        ))
+
+
+def _check_overvalued_peer_but_bearish(
+    forecast: Dict[str, Any], funds: Dict[str, Any], out: List[ContradictionItem]
+) -> None:
+    """Forecast is bearish but financials are strong — may indicate overreaction."""
+    if not forecast or not funds:
+        return
+
+    prob_bear = forecast.get("probability_bearish", 50.0)
+    classification = funds.get("classification", "")
+    health_score = funds.get("health_score_composite", 50.0)
+
+    if prob_bear > 65 and classification in ("strong", "stellar") and health_score > 70:
+        out.append(ContradictionItem(
+            type="bearish_forecast_strong_fundamentals",
+            explanation=(
+                f"Statistical forecast leans bearish ({prob_bear:.0f}% probability) but "
+                f"fundamental health is '{classification}' with composite score {health_score:.0f}/100. "
+                "Technical/momentum signals conflict with solid underlying financials."
+            )
+        ))

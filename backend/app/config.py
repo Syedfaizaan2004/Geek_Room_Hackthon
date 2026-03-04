@@ -1,128 +1,181 @@
 """
-backend/app/config.py
+config.py — Centralised application configuration.
 
-Environment configuration loader for the Financial & Market Research Agent.
-
-Uses python-dotenv to load and expose all application settings from the
-`.env` file in a strongly-typed Settings class.  Every key here maps
-1-to-1 to a variable in the .env file — do not add defaults that shadow
-misconfigured environments silently.
+All environment variables are loaded ONCE here via pydantic-settings.
+Every other module imports Settings from this file.
+No other file should call os.getenv() or read .env directly.
 """
 
-import os
 from functools import lru_cache
-from typing import List
+from pathlib import Path
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, field_validator
 
-from dotenv import load_dotenv
+# ---------------------------------------------------------------------------
+# Resolve .env location
+# config.py lives at: backend/app/config.py
+# .env lives at:      <project_root>/.env  (one level above backend/)
+# ---------------------------------------------------------------------------
+_THIS_FILE = Path(__file__).resolve()           # backend/app/config.py
+_BACKEND_DIR = _THIS_FILE.parent.parent         # backend/
+_PROJECT_ROOT = _BACKEND_DIR.parent             # project root (Ai_Financial_Agent/)
+_ENV_FILE = _PROJECT_ROOT / ".env"
 
-# Load .env from the project root (two levels up from this file)
-load_dotenv()
 
-
-class Settings:
+class Settings(BaseSettings):
     """
-    Central configuration class.
-
-    All attribute names exactly match the keys defined in .env.
-    Add new settings here as the project grows.
+    Application settings loaded from the .env file at project root.
+    pydantic-settings automatically reads the .env file and validates types.
     """
 
-    # -----------------------------------------------------------------------
+    model_config = SettingsConfigDict(
+        env_file=str(_ENV_FILE),
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",          # Silently ignore unknown env vars
+    )
+
+    # ------------------------------------------------------------------
     # 🌐 Application
-    # -----------------------------------------------------------------------
-    APP_NAME: str = os.getenv("APP_NAME", "Financial Research Agent")
-    APP_ENV: str = os.getenv("APP_ENV", "production")
-    DEBUG: bool = os.getenv("DEBUG", "False").lower() in ("true", "1", "yes")
-    HOST: str = os.getenv("HOST", "0.0.0.0")
-    PORT: int = int(os.getenv("PORT", "8000"))
+    # ------------------------------------------------------------------
+    APP_NAME: str = Field(default="Financial Research Agent")
+    APP_ENV: str = Field(default="development")           # development | production
+    DEBUG: bool = Field(default=False)
+    HOST: str = Field(default="0.0.0.0")
+    PORT: int = Field(default=8000)
 
-    # -----------------------------------------------------------------------
-    # 🤖 AI / LLM Configuration
-    # -----------------------------------------------------------------------
-    LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "local")          # local | groq | gemini
-    LOCAL_LLM_MODEL: str = os.getenv("LOCAL_LLM_MODEL", "llama3")
-    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
-    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
-
-    # -----------------------------------------------------------------------
-    # 📊 Forecast Model Settings
-    # -----------------------------------------------------------------------
-    TFT_MODEL_PATH: str = os.getenv(
-        "TFT_MODEL_PATH", "backend/forecasting/tft/tft_model.pth"
+    # ------------------------------------------------------------------
+    # 🗄 Database
+    # ------------------------------------------------------------------
+    DATABASE_URL: str = Field(
+        ...,
+        description="SQLAlchemy-compatible DB URL. Use 'sqlite+aiosqlite:///...' for local, "
+                    "'postgresql+asyncpg://...' for Render/production.",
     )
-    TFT_PARAMS_PATH: str = os.getenv(
-        "TFT_PARAMS_PATH", "backend/forecasting/tft/tft_dataset_params.pkl"
-    )
-    XGB_MODEL_PATH: str = os.getenv(
-        "XGB_MODEL_PATH", "backend/forecasting/xgboost/xgb_model.pkl"
-    )
-    FEATURES_PATH: str = os.getenv(
-        "FEATURES_PATH", "backend/forecasting/features.pkl"
-    )
-    STOCKS_LIST_PATH: str = os.getenv(
-        "STOCKS_LIST_PATH", "backend/forecasting/stocks_used.pkl"
-    )
-    FORECAST_HORIZON_DAYS: int = int(os.getenv("FORECAST_HORIZON_DAYS", "30"))
-    ENCODER_LENGTH: int = int(os.getenv("ENCODER_LENGTH", "60"))
 
-    # -----------------------------------------------------------------------
-    # 📈 Market Data Settings
-    # -----------------------------------------------------------------------
-    # Stored as comma-separated string in .env; exposed as a list here.
-    DATA_PROVIDERS: List[str] = [
-        p.strip()
-        for p in os.getenv("DATA_PROVIDERS", "yfinance").split(",")
-        if p.strip()
-    ]
-    CACHE_ENABLED: bool = os.getenv("CACHE_ENABLED", "True").lower() in ("true", "1", "yes")
-    CACHE_TTL_MINUTES: int = int(os.getenv("CACHE_TTL_MINUTES", "60"))
+    # ------------------------------------------------------------------
+    # 🧠 Vector Store (Qdrant)
+    # ------------------------------------------------------------------
+    QDRANT_URL: str = Field(..., description="Qdrant cloud cluster URL")
+    QDRANT_API_KEY: str = Field(..., description="Qdrant API key")
+    QDRANT_COLLECTION: str = Field(default="financial_insights")
 
-    # -----------------------------------------------------------------------
-    # 📈 Data API Keys
-    # -----------------------------------------------------------------------
-    ALPHA_VANTAGE_KEY: str = os.getenv("ALPHA_VANTAGE_KEY", "")
-
-    # -----------------------------------------------------------------------
-    # 🧠 Agent Settings
-    # -----------------------------------------------------------------------
-    QUICK_MODE_TIMEOUT: int = int(os.getenv("QUICK_MODE_TIMEOUT", "30"))
-    DEEP_MODE_TIMEOUT: int = int(os.getenv("DEEP_MODE_TIMEOUT", "180"))
-    CONFIDENCE_THRESHOLD: float = float(os.getenv("CONFIDENCE_THRESHOLD", "0.65"))
-
-    # -----------------------------------------------------------------------
-    # 🗄 Database Settings
-    # -----------------------------------------------------------------------
-    DB_TYPE: str = os.getenv("DB_TYPE", "sqlite")
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./financial_agent.db")
-
-    # -----------------------------------------------------------------------
-    # 🧠 Memory & Personalization
-    # -----------------------------------------------------------------------
-    MEMORY_ENABLED: bool = os.getenv("MEMORY_ENABLED", "True").lower() in ("true", "1", "yes")
-    DEFAULT_RISK_PROFILE: str = os.getenv("DEFAULT_RISK_PROFILE", "moderate")
-    DEFAULT_TIME_HORIZON: str = os.getenv("DEFAULT_TIME_HORIZON", "long_term")
-
-    # -----------------------------------------------------------------------
+    # ------------------------------------------------------------------
     # 🔐 Security
-    # -----------------------------------------------------------------------
-    API_KEY_REQUIRED: bool = os.getenv("API_KEY_REQUIRED", "False").lower() in ("true", "1", "yes")
-    API_KEY: str = os.getenv("API_KEY", "")
+    # ------------------------------------------------------------------
+    SECRET_KEY: str = Field(..., description="App secret key (JWT signing, etc.)")
+    JWT_SECRET: str = Field(default="")
+    JWT_ALGORITHM: str = Field(default="HS256")
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=1440)
 
-    # -----------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # 🤖 LLM Providers
+    # ------------------------------------------------------------------
+    LLM_PROVIDER: str = Field(default="groq")       # groq | gemini | disabled
+    GROQ_API_KEY: str = Field(default="")
+    GROQ_MODEL: str = Field(default="llama-3.3-70b-versatile")
+    GEMINI_API_KEY: str = Field(default="")
+    GEMINI_MODEL: str = Field(default="gemini-2.5-flash")
+
+    # ------------------------------------------------------------------
+    # 📊 Market Data
+    # ------------------------------------------------------------------
+    DATA_PROVIDERS: str = Field(default="yfinance")
+    CACHE_ENABLED: bool = Field(default=True)
+    CACHE_TTL_MINUTES: int = Field(default=60)
+
+    # ------------------------------------------------------------------
+    # 📈 Forecast / Analytics
+    # ------------------------------------------------------------------
+    FORECAST_HORIZON_DAYS: int = Field(default=30)
+    MOVING_AVERAGE_SHORT: int = Field(default=20)
+    MOVING_AVERAGE_LONG: int = Field(default=50)
+    VOLATILITY_LOOKBACK_DAYS: int = Field(default=90)
+
+    # ------------------------------------------------------------------
+    # ⚠️ Risk / Scenario
+    # ------------------------------------------------------------------
+    DEFAULT_RECESSION_IMPACT: float = Field(default=-0.05)
+    DEFAULT_INFLATION_IMPACT: float = Field(default=-0.03)
+    DEFAULT_RATE_HIKE_IMPACT: float = Field(default=-0.02)
+
+    # ------------------------------------------------------------------
+    # 🧠 Agent settings
+    # ------------------------------------------------------------------
+    QUICK_MODE_TIMEOUT: int = Field(default=20)
+    DEEP_MODE_TIMEOUT: int = Field(default=120)
+    CONFIDENCE_THRESHOLD: float = Field(default=0.65)
+
+    # ------------------------------------------------------------------
+    # 👤 Personalisation defaults
+    # ------------------------------------------------------------------
+    DEFAULT_RISK_PROFILE: str = Field(default="moderate")
+    DEFAULT_TIME_HORIZON: str = Field(default="long_term")
+
+    # ------------------------------------------------------------------
+    # ⚡ Performance / Demo  (Phase 16)
+    # ------------------------------------------------------------------
+    ENABLE_CACHE: bool = Field(default=True)
+    CACHE_TTL: int = Field(default=300, description="L1 cache TTL in seconds")
+    DEMO_MODE: bool = Field(default=False)
+    DEMO_DEFAULT_TICKER: str = Field(default="AAPL")
+    MAX_REQUESTS_PER_MINUTE: int = Field(default=20, description="Per-user rate limit")
+    ENABLE_LLM: bool = Field(default=True, description="Master LLM toggle")
+
+    # ------------------------------------------------------------------
     # 📊 Logging
-    # -----------------------------------------------------------------------
-    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
-    LOG_FILE: str = os.getenv("LOG_FILE", "app.log")
+    # ------------------------------------------------------------------
+    LOG_LEVEL: str = Field(default="INFO")
+    ENABLE_PERFORMANCE_LOGS: bool = Field(default=True)
+
+    # ------------------------------------------------------------------
+    # Validators
+    # ------------------------------------------------------------------
+    @field_validator("APP_ENV")
+    @classmethod
+    def validate_env(cls, v: str) -> str:
+        allowed = {"development", "staging", "production"}
+        if v.lower() not in allowed:
+            raise ValueError(f"APP_ENV must be one of {allowed}, got '{v}'")
+        return v.lower()
+
+    @field_validator("LLM_PROVIDER")
+    @classmethod
+    def validate_llm_provider(cls, v: str) -> str:
+        allowed = {"groq", "gemini", "local", "disabled"}
+        if v.lower() not in allowed:
+            raise ValueError(f"LLM_PROVIDER must be one of {allowed}, got '{v}'")
+        return v.lower()
+
+
+    # ------------------------------------------------------------------
+    # Convenience helpers
+    # ------------------------------------------------------------------
+    @property
+    def is_production(self) -> bool:
+        return self.APP_ENV == "production"
+
+    @property
+    def is_debug(self) -> bool:
+        return self.DEBUG
+
+    @property
+    def effective_log_level(self) -> str:
+        """Return DEBUG in development, LOG_LEVEL otherwise."""
+        if self.APP_ENV == "development" and self.DEBUG:
+            return "DEBUG"
+        return self.LOG_LEVEL
 
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     """
     Return a cached singleton Settings instance.
-
-    Using lru_cache ensures the .env file is parsed only once per
-    application lifetime, improving startup performance.
+    Use this everywhere: `from app.config import get_settings; settings = get_settings()`
+    The lru_cache ensures .env is parsed only once per process.
     """
     return Settings()
 
-# reload
+
+# Module-level alias for convenience
+settings = get_settings()

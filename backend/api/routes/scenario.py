@@ -1,115 +1,101 @@
 """
-backend/api/routes/scenario.py
-
-Scenario & Stress Testing API endpoint for the Financial & Market Research Agent.
-
-Endpoint:
-    GET /scenario/{ticker}?type=recession
+api/routes/scenario.py — Scenario Stress Testing Endpoints (Phase 7).
 """
 
 import logging
-from typing import Any, Dict
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, Query, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.risk_engine.scenario_assumptions import VALID_SCENARIOS
+from analytics.fundamentals_engine import FundamentalsFetchError, InsufficientFundamentalsError
+from analytics.service import MarketDataFetchError, TickerNotFoundError, InsufficientDataError
+from api.routes.auth import get_current_user
+from db.session import get_db
+from memory import crud
+from memory.models import User
+from risk.scenario_engine import run_sync_scenario_analysis, InvalidScenarioError
+from schemas.scenario import ScenarioResponse
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/scenario", tags=["Scenario Analysis"])
 
-_SCENARIO_DESCRIPTIONS = {
-    "high_inflation":  "Rising input costs and softening consumer demand compress margins and revenue growth.",
-    "recession":       "Broad economic contraction — revenue declines, earnings compress, credit risk rises.",
-    "rate_hike":       "Central bank tightening raises borrowing costs, pressuring leveraged companies.",
-    "growth_slowdown": "Economic deceleration — subdued revenue growth, valuation multiple compression.",
-}
+router = APIRouter(prefix="/scenario", tags=["Scenario Engine"])
 
 
 @router.get(
     "/{ticker}",
-    summary="Scenario & Stress Testing",
-    description=(
-        "Simulates the impact of a macroeconomic scenario on a company's "
-        "revenue growth, margins, leverage risk, and forecast outlook.\n\n"
-        "**Supported scenarios** (`?type=`):\n"
-        "- `high_inflation` — margin compression and demand softening\n"
-        "- `recession` — revenue & earnings contraction\n"
-        "- `rate_hike` — higher borrowing costs for leveraged firms\n"
-        "- `growth_slowdown` — subdued growth and valuation pressure\n\n"
-        "Returns **400** for invalid scenario names.\n"
-        "Returns **503** if market data (yfinance) is not available.\n"
-        "Returns **500** on unexpected errors."
-    ),
-    response_description="Structured scenario stress test report",
+    response_model=ScenarioResponse,
+    summary="Get stress-tested forecast and risk metrics",
+    responses={
+        400: {"description": "Invalid scenario type"},
+        401: {"description": "Missing or invalid token"},
+        404: {"description": "Ticker not found or missing foundational data"},
+        422: {"description": "Insufficient history to calculate risk"},
+        503: {"description": "External data provider unavailable"},
+    },
 )
 async def get_scenario_analysis(
     ticker: str,
-    type: str = Query(  # noqa: A002
-        default="recession",
-        description=(
-            f"Macroeconomic scenario to simulate. "
-            f"One of: {', '.join(VALID_SCENARIOS)}"
-        ),
-        alias="type",
-    ),
-) -> Dict[str, Any]:
+    current_user: Annotated[User, Depends(get_current_user)],
+    type: Annotated[str, Query(description="recession | inflation | rate_hike | growth_slowdown")],
+    db: AsyncSession = Depends(get_db),
+) -> ScenarioResponse:
     """
-    GET /scenario/{ticker}?type=<scenario>
-
-    Runs the full scenario stress pipeline and returns:
-      - Revenue growth adjusted for scenario conditions
-      - Net margin compressed by scenario cost/demand factors
-      - Leverage risk amplified by scenario multiplier
-      - Forecast expectation and confidence adjusted
-      - Overall risk outlook summary
-
-    Args:
-        ticker (str): Stock symbol (case-insensitive).
-        type (str): Scenario key (default: 'recession').
-
-    Returns:
-        dict: Scenario analysis report.
+    Run a deterministic macroeconomic stress test against a stock's baseline forecast and risk profile.
+    
+    Available scenarios:
+    - `recession`
+    - `inflation`
+    - `rate_hike`
+    - `growth_slowdown`
+    
+    Requires: `Authorization: Bearer <token>`
     """
-    canonical = ticker.upper().strip()
-    scenario  = type.lower().strip()
-
-    logger.info("Scenario analysis requested: %s / %s", canonical, scenario)
-
-    # Validate scenario
-    if scenario not in VALID_SCENARIOS:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Unknown scenario '{scenario}'. "
-                f"Supported: {', '.join(VALID_SCENARIOS)}"
-            ),
-        )
-
     try:
-        from backend.risk_engine.scenario_engine import run_scenario_analysis
-        result = run_scenario_analysis(canonical, scenario)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        error_msg = str(exc)
-        if "yfinance" in error_msg.lower():
-            raise HTTPException(
-                status_code=503,
-                detail="Market data provider (yfinance) not available. pip install yfinance",
-            ) from exc
+        # Load Preferences for forecast horizon baseline
+        prefs = await crud.get_preferences_by_user_id(db, current_user.id)
+        if not prefs:
+            prefs = await crud.create_default_preferences(db, current_user.id)
+            
+        time_horizon = prefs.time_horizon
+        
+        # Execute Stress Test
+        response = run_sync_scenario_analysis(ticker, time_horizon, type)
+        return response
+        
+    except InvalidScenarioError as exc:
         raise HTTPException(
-            status_code=404,
-            detail=f"No financial data available for '{canonical}': {error_msg}",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "success": False,
+                "error": "Invalid Scenario Type",
+                "detail": str(exc),
+            },
         ) from exc
-    except Exception as exc:  # pylint: disable=broad-except
-        logger.exception("Scenario analysis failed for %s/%s", canonical, scenario)
+    except (TickerNotFoundError, InsufficientFundamentalsError) as exc:
         raise HTTPException(
-            status_code=500,
-            detail=f"Scenario analysis error: {type(exc).__name__}: {exc}",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "success": False,
+                "error": "Data missing or ticker not found",
+                "detail": str(exc),
+            },
         ) from exc
-
-    logger.info(
-        "Scenario complete for %s/%s | outlook: %s",
-        canonical, scenario, result.get("risk_outlook", ""),
-    )
-    return result
+    except InsufficientDataError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "success": False,
+                "error": "Insufficient history for volatility math",
+                "detail": str(exc),
+            },
+        ) from exc
+    except (MarketDataFetchError, FundamentalsFetchError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "success": False,
+                "error": "Upstream data provider failed",
+                "detail": str(exc),
+            },
+        ) from exc

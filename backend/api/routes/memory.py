@@ -1,167 +1,172 @@
 """
-backend/api/routes/memory.py
+api/routes/memory.py — Semantic Memory API endpoints (Phase 12).
 
-Memory & Personalization API endpoints.
-
-Provides simple REST endpoints for managing user preferences and
-retrieving session history. No authentication required (hackathon mode).
+All routes require authentication.
 
 Endpoints:
-    POST   /memory/preferences             — save (upsert) preferences
-    GET    /memory/preferences/{user_id}   — retrieve preferences
-    PUT    /memory/preferences/{user_id}   — partial update
-    DELETE /memory/preferences/{user_id}   — delete record
-    GET    /memory/history/{user_id}       — recent query history
+  POST /memory/search                → Semantic insight search (user-scoped)
+  GET  /memory/similar/{ticker}      → Find similar companies globally
+  GET  /memory/risk-pattern          → Tickers above risk threshold
 """
 
-from __future__ import annotations
-
 import logging
-from typing import Any, Dict, List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Query
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field, field_validator
-from sqlalchemy.orm import Session
+from api.routes.auth import get_current_user
+from memory.models import User
+from schemas.memory import (
+    MemorySearchRequest,
+    MemorySearchResponse,
+    MemorySimilarResult,
+    RiskPatternResult,
+)
 
-from backend.db.session import get_db
-from backend.memory import crud
-
+router = APIRouter()
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/memory", tags=["Memory & Personalization"])
+
+def _get_qdrant_client():
+    """Get the Qdrant client, raise 503 if unavailable."""
+    from vector_store.qdrant_client import qdrant_wrapper
+    if not qdrant_wrapper.is_healthy or qdrant_wrapper.client is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Vector memory service is currently unavailable. "
+                   "Ensure Qdrant cloud credentials are valid in .env"
+        )
+    return qdrant_wrapper.client
 
 
-# ---------------------------------------------------------------------------
-# Request / Response schemas
-# ---------------------------------------------------------------------------
+# ── POST /memory/search ───────────────────────────────────────────────────────
 
-class PreferencesIn(BaseModel):
-    """Request body for saving or updating user preferences."""
-    user_id:           str             = Field(..., min_length=1, max_length=64, examples=["user_001"])
-    risk_profile:      Optional[str]   = Field("moderate", examples=["conservative"])
-    preferred_metrics: Optional[List[str]] = Field(default_factory=list, examples=[["ROE", "FCF"]])
-    preferred_sectors: Optional[List[str]] = Field(default_factory=list, examples=[["Technology"]])
-    time_horizon:      Optional[str]   = Field("medium", examples=["long"])
-
-    @field_validator("risk_profile")
-    @classmethod
-    def validate_risk(cls, v: Optional[str]) -> Optional[str]:
-        allowed = {"conservative", "moderate", "aggressive"}
-        if v and v.lower() not in allowed:
-            raise ValueError(f"risk_profile must be one of {sorted(allowed)}")
-        return v.lower() if v else v
-
-    @field_validator("time_horizon")
-    @classmethod
-    def validate_horizon(cls, v: Optional[str]) -> Optional[str]:
-        allowed = {"short", "medium", "long"}
-        if v and v.lower() not in allowed:
-            raise ValueError(f"time_horizon must be one of {sorted(allowed)}")
-        return v.lower() if v else v
-
-
-class PreferencesUpdateIn(BaseModel):
-    """Partial update — all fields optional."""
-    risk_profile:      Optional[str]       = None
-    preferred_metrics: Optional[List[str]] = None
-    preferred_sectors: Optional[List[str]] = None
-    time_horizon:      Optional[str]       = None
-
-    @field_validator("risk_profile")
-    @classmethod
-    def validate_risk(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None and v.lower() not in {"conservative", "moderate", "aggressive"}:
-            raise ValueError("Invalid risk_profile value")
-        return v.lower() if v else v
-
-    @field_validator("time_horizon")
-    @classmethod
-    def validate_horizon(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None and v.lower() not in {"short", "medium", "long"}:
-            raise ValueError("Invalid time_horizon value")
-        return v.lower() if v else v
-
-
-# ---------------------------------------------------------------------------
-# Endpoints
-# ---------------------------------------------------------------------------
-
-@router.post("/preferences", summary="Save user preferences (upsert)")
-def save_preferences(
-    body: PreferencesIn,
-    db: Session = Depends(get_db),
-) -> Dict[str, Any]:
+@router.post("/memory/search", response_model=MemorySearchResponse)
+async def search_memory(
+    body: MemorySearchRequest,
+    current_user: User = Depends(get_current_user),
+):
     """
-    Insert or replace user preferences.
+    Semantic search through your past research sessions.
 
-    If a record already exists for `user_id`, it is completely replaced.
-    Use PUT for partial updates.
+    Embeds the query text and finds the most similar stored insights
+    using cosine similarity. Results are scoped to your user account.
+
+    Example queries:
+    - "tech companies with high growth but elevated risk"
+    - "bullish outlook with strong cash flow"
+    - "similar to my AAPL analysis"
     """
-    result = crud.save_preferences(
-        db,
-        user_id = body.user_id,
-        prefs   = body.model_dump(exclude={"user_id"}),
-    )
-    return {"status": "saved", "preferences": result}
+    client = _get_qdrant_client()
+    logger.info(f"Memory search: '{body.query[:60]}' for user={current_user.unique_user_id}")
+
+    try:
+        from vector_store.memory_service import retrieve_similar_insights
+        # Prefer stable UUID-based key; fallback to legacy unique_user_id key.
+        user_keys = [str(current_user.id), current_user.unique_user_id]
+        results = []
+        for key in user_keys:
+            results = await retrieve_similar_insights(
+                client=client,
+                query_text=body.query,
+                user_id=key,
+                top_k=body.top_k,
+            )
+            if results:
+                break
+        return MemorySearchResponse(
+            query=body.query,
+            similar_results=results,
+            total_found=len(results),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Memory search failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Memory search failed: {str(e)}")
 
 
-@router.get("/preferences/{user_id}", summary="Get user preferences")
-def get_preferences(
-    user_id: str,
-    db: Session = Depends(get_db),
-) -> Dict[str, Any]:
+# ── GET /memory/similar/{ticker} ──────────────────────────────────────────────
+
+@router.get("/memory/similar/{ticker}", response_model=MemorySearchResponse)
+async def find_similar_companies(
+    ticker: str,
+    top_k: int = Query(default=5, ge=1, le=10),
+    current_user: User = Depends(get_current_user),
+):
     """
-    Retrieve user preferences. Returns defaults if no record exists.
+    Discover companies that are semantically similar to the given ticker
+    based on stored research embeddings.
+
+    Searches across ALL users' stored insights (not scoped by user_id)
+    to maximise the discovery pool.
     """
-    result = crud.get_preferences(db, user_id=user_id)
-    return {"preferences": result}
+    ticker = ticker.upper().strip()
+    client = _get_qdrant_client()
+    logger.info(f"Similar company search for {ticker} by user={current_user.unique_user_id}")
+
+    try:
+        # First generate a query text for this ticker using a live insight fetch
+        from analytics.service import get_market_snapshot
+        from vector_store.embeddings import build_insight_text
+
+        query_text = f"Financial analysis of {ticker} stock"
+        try:
+            snap = get_market_snapshot(ticker, period="1y")
+            query_text = build_insight_text(
+                ticker=ticker,
+                executive_summary=f"{ticker} is a company trading at ${snap.last_price:.2f} with {snap.trend_direction} momentum."
+            )
+        except Exception:
+            pass  # Fall back to generic query text
+
+        from vector_store.memory_service import find_similar_companies as _find
+        results = await _find(
+            client=client,
+            ticker=ticker,
+            insight_text=query_text,
+            top_k=top_k,
+        )
+        return MemorySearchResponse(
+            query=f"Companies similar to {ticker}",
+            similar_results=results,
+            total_found=len(results),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Similar company search failed for {ticker}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/preferences/{user_id}", summary="Partially update user preferences")
-def update_preferences(
-    user_id: str,
-    body: PreferencesUpdateIn,
-    db: Session = Depends(get_db),
-) -> Dict[str, Any]:
+# ── GET /memory/risk-pattern ──────────────────────────────────────────────────
+
+@router.get("/memory/risk-pattern", response_model=list)
+async def get_risk_pattern(
+    threshold: float = Query(default=70.0, ge=0.0, le=100.0, description="Minimum risk score"),
+    current_user: User = Depends(get_current_user),
+):
     """
-    Partially update user preferences.
+    Return all previously-researched tickers whose composite risk score
+    exceeds the specified threshold.
 
-    Only fields included in the request body are changed.
+    Uses Qdrant metadata filtering — no embedding needed.
+    Useful for portfolio-level risk monitoring.
+
+    Example: GET /memory/risk-pattern?threshold=70
+    Returns all tickers you or anyone has analysed with risk > 70/100.
     """
-    update_data = {k: v for k, v in body.model_dump().items() if v is not None}
-    if not update_data:
-        raise HTTPException(status_code=400, detail="No fields provided for update.")
+    client = _get_qdrant_client()
+    logger.info(f"Risk pattern search: threshold={threshold}")
 
-    result = crud.update_preferences(db, user_id=user_id, prefs=update_data)
-    return {"status": "updated", "preferences": result}
-
-
-@router.delete("/preferences/{user_id}", summary="Delete user preferences")
-def delete_preferences(
-    user_id: str,
-    db: Session = Depends(get_db),
-) -> Dict[str, Any]:
-    """
-    Delete a user's preference record. Returns 404 if not found.
-    """
-    deleted = crud.delete_preferences(db, user_id=user_id)
-    if not deleted:
-        raise HTTPException(status_code=404, detail=f"No preferences found for user_id='{user_id}'")
-    return {"status": "deleted", "user_id": user_id}
-
-
-@router.get("/history/{user_id}", summary="Get recent query history")
-def get_history(
-    user_id: str,
-    limit: int = 5,
-    db: Session = Depends(get_db),
-) -> Dict[str, Any]:
-    """
-    Retrieve recent query history for a user.
-
-    Args:
-        limit: Number of recent queries to return (max 20).
-    """
-    limit   = min(max(limit, 1), 20)
-    history = crud.get_query_history(db, user_id=user_id, limit=limit)
-    return {"user_id": user_id, "history": history, "count": len(history)}
+    try:
+        from vector_store.memory_service import search_by_risk_pattern
+        results = await search_by_risk_pattern(
+            client=client,
+            risk_threshold=threshold,
+            limit=50,
+        )
+        return [r.model_dump() for r in results]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Risk pattern search failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

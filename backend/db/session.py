@@ -1,106 +1,122 @@
 """
-backend/db/session.py
+db/session.py — Async SQLAlchemy engine and session factory.
 
-SQLAlchemy database engine and session factory.
+Designed for:
+  - SQLite (development) via aiosqlite
+  - PostgreSQL (production/Render) via asyncpg — just swap DATABASE_URL
 
-Uses SQLite by default (DATABASE_URL from .env). Designed to be
-simple and hackathon-friendly — no migrations required. Tables are
-created automatically on startup via create_all().
-
-Usage:
-    from backend.db.session import get_db, engine
-    from backend.db.session import Base   # for model declarations
-
-    # FastAPI dependency injection:
-    def my_endpoint(db: Session = Depends(get_db)): ...
-
-    # Direct use:
-    with SessionLocal() as db:
-        db.add(obj)
-        db.commit()
+Usage (FastAPI dependency injection):
+    async def my_route(db: AsyncSession = Depends(get_db)):
+        ...
 """
 
-from __future__ import annotations
-
-import os
 import logging
-from pathlib import Path
-from typing import Generator
+from typing import AsyncGenerator
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import declarative_base, sessionmaker, Session
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+    AsyncEngine,
+)
+
+from app.config import get_settings
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
-# ---------------------------------------------------------------------------
-# Database URL — defaults to local SQLite file
-# ---------------------------------------------------------------------------
+# ------------------------------------------------------------------
+# Resolve async-compatible DATABASE_URL
+# ------------------------------------------------------------------
+# The .env stores the URL without an async driver prefix (e.g. "sqlite:///...")
+# SQLAlchemy async engine requires the driver to be explicit:
+#   sqlite:///...         → sqlite+aiosqlite:///...
+#   postgresql:///...     → postgresql+asyncpg:///...
+def _make_async_url(url: str) -> str:
+    """Patch a plain DB URL to its async-driver equivalent."""
+    if url.startswith("sqlite:///") and "+aiosqlite" not in url:
+        return url.replace("sqlite:///", "sqlite+aiosqlite:///", 1)
+    if url.startswith("postgresql://") and "+asyncpg" not in url:
+        return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    if url.startswith("postgres://") and "+asyncpg" not in url:
+        return url.replace("postgres://", "postgresql+asyncpg://", 1)
+    return url
 
-_DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "agent_memory.db"
-_DEFAULT_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-DATABASE_URL: str = os.getenv(
-    "DATABASE_URL",
-    f"sqlite:///{_DEFAULT_DB_PATH}",
-)
+_async_db_url = _make_async_url(settings.DATABASE_URL)
 
-logger.info("[db/session] Database URL: %s", DATABASE_URL)
-
-# ---------------------------------------------------------------------------
+# ------------------------------------------------------------------
 # Engine
-# ---------------------------------------------------------------------------
+# ------------------------------------------------------------------
+# connect_args only needed for SQLite (to enable WAL mode for concurrency)
+_connect_args: dict = {}
+if _async_db_url.startswith("sqlite"):
+    _connect_args = {"check_same_thread": False}
 
-_connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
-
-engine = create_engine(
-    DATABASE_URL,
+engine: AsyncEngine = create_async_engine(
+    url=_async_db_url,
+    echo=settings.is_debug,          # Log all SQL statements in debug mode
+    future=True,                     # SQLAlchemy 2.0 mode
     connect_args=_connect_args,
-    echo=False,           # Set True to log all SQL statements
 )
 
-# ---------------------------------------------------------------------------
+# ------------------------------------------------------------------
 # Session factory
-# ---------------------------------------------------------------------------
-
-SessionLocal = sessionmaker(
+# ------------------------------------------------------------------
+AsyncSessionFactory: async_sessionmaker[AsyncSession] = async_sessionmaker(
     bind=engine,
-    autocommit=False,
+    class_=AsyncSession,
+    expire_on_commit=False,    # Objects stay usable after commit
     autoflush=False,
+    autocommit=False,
 )
 
-# ---------------------------------------------------------------------------
-# Declarative base — all ORM models inherit from this
-# ---------------------------------------------------------------------------
 
-Base = declarative_base()
-
-
-# ---------------------------------------------------------------------------
-# FastAPI dependency
-# ---------------------------------------------------------------------------
-
-def get_db() -> Generator[Session, None, None]:
+# ------------------------------------------------------------------
+# FastAPI dependency — yields a transactional session per request
+# ------------------------------------------------------------------
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
-    Yield a database session and ensure it is closed after use.
+    Async generator that yields an AsyncSession.
+    Automatically commits on success and rolls back on exception.
 
-    Use as a FastAPI dependency:
-        db: Session = Depends(get_db)
+    Use as:
+        db: AsyncSession = Depends(get_db)
     """
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+    async with AsyncSessionFactory() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
 
 
-def init_db() -> None:
+# ------------------------------------------------------------------
+# Database initialisation — called once at application startup
+# ------------------------------------------------------------------
+async def init_db() -> None:
     """
-    Create all tables defined by ORM models.
+    Create all tables defined by models that have imported Base.
+    Each phase adds model imports here to register them with SQLAlchemy metadata.
 
-    Called once at application startup. Safe to call multiple times
-    (idempotent — no-op if tables already exist).
+    Phase 0: No models — confirmed connectivity only.
+    Phase 1: User model registered → creates 'users' table.
     """
-    # Import all models so SQLAlchemy knows about them before create_all
-    import backend.memory.models  # noqa: F401  (side-effect import)
-    Base.metadata.create_all(bind=engine)
-    logger.info("[db/session] Database tables created / verified.")
+    from db.base import Base  # noqa: F401
+
+    # ── Phase 1 + 2: register User and UserPreferences models ────────────────
+    from memory.models import User, UserPreferences  # noqa: F401
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    logger.info("Database initialised successfully", extra={"url": settings.DATABASE_URL})
+
+
+async def close_db() -> None:
+    """Dispose the engine pool — called on application shutdown."""
+    await engine.dispose()
+    logger.info("Database engine disposed")
