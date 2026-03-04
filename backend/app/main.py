@@ -146,7 +146,7 @@ def create_app() -> FastAPI:
     # TODO: Restrict `allow_origins` to your frontend domain in production
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"] if not settings.is_production else [],
+        allow_origins=["*"], # Allow all origins temporarily so Render frontend can connect
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
