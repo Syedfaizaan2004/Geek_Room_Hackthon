@@ -1,5 +1,5 @@
 # Use official Node.js image with Alpine for a smaller footprint
-FROM node:18-alpine AS base
+FROM node:20-alpine AS base
 
 # Step 1. Rebuild the source code only when needed
 FROM base AS builder
