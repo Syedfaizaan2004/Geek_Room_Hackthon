@@ -1,0 +1,53 @@
+services:
+  # ----------------------------------------------------
+  # Backend FastAPI Service
+  # ----------------------------------------------------
+  - type: web
+    name: ai-financial-agent-backend
+    env: docker
+    region: ohio
+    plan: free # Change to a paid plan if required
+    rootDir: backend
+    dockerfilePath: Dockerfile
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DEBUG
+        value: "False"
+      - key: LLM_PROVIDER
+        value: groq
+      
+      # The variables below will be requested securely during Blueprint deployment
+      - key: DATABASE_URL
+        sync: false
+      - key: QDRANT_URL
+        sync: false
+      - key: QDRANT_API_KEY
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+
+  # ----------------------------------------------------
+  # Frontend Next.js Service
+  # ----------------------------------------------------
+  - type: web
+    name: ai-financial-agent-frontend
+    env: docker
+    region: ohio
+    plan: free # Change to a paid plan if required
+    rootDir: frontend
+    dockerfilePath: Dockerfile
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Automatically pass the deployed backend URL to the frontend
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: ai-financial-agent-backend
+          property: host
