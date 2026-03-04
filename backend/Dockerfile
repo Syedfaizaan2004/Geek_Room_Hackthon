@@ -7,19 +7,23 @@ ENV PYTHONUNBUFFERED=1
 ENV APP_ENV=production
 
 # Set the working directory
+# Set the working directory
 WORKDIR /app
 
-# Install system dependencies (if any are needed for libraries like psycopg2 or similar)
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends gcc build-essential \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements file FIRST to leverage Docker cache
+# Install system dependencies, install Python dependencies, and clean up in one layer
+# We explicitly install the CPU-only version of PyTorch first to avoid the massive 4GB+ GPU version
+# that gets pulled in by sentence-transformers, then we install the rest of requirements.txt.
 COPY requirements.txt .
 
-# Install Python dependencies
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gcc build-essential \
+    && pip install --upgrade pip \
+    && pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu \
+    && pip install --no-cache-dir -r requirements.txt \
+    && apt-get remove -y gcc build-essential \
+    && apt-get autoremove -y \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy the rest of the application code
 COPY . .
