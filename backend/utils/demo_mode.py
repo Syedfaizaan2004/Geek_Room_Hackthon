@@ -49,8 +49,8 @@ async def preload_demo_tickers() -> None:
 async def check_db_health() -> bool:
     """Ping the DB connection to ensure it's ready at startup."""
     try:
-        from db.session import AsyncSessionLocal
-        async with AsyncSessionLocal() as session:
+        from db.session import AsyncSessionFactory
+        async with AsyncSessionFactory() as session:
             await session.execute(__import__("sqlalchemy").text("SELECT 1"))
         logger.info("DB health check: OK")
         return True
