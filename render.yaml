@@ -9,7 +9,7 @@ services:
     plan: free # Change to a paid plan if required
     rootDir: backend
     dockerfilePath: Dockerfile
-    healthCheckPath: /api/v1/health
+    healthCheckPath: /health
     envVars:
       - key: APP_ENV
         value: production
