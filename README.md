@@ -149,20 +149,41 @@ Open [http://localhost:3000](http://localhost:3000) to view the application in y
 
 ---
 
-## ☁️ Deployment on Render
+## ☁️ Deployment
 
-This project is configured to be deployed easily on [Render](https://render.com/) utilizing Render Blueprints via the included `render.yaml` file. It provisions two separate web services: one for the backend and one for the frontend.
+This project is configured to be deployed easily on any Docker-compatible platform (e.g., [Railway](https://railway.app/), [DigitalOcean App Platform](https://www.digitalocean.com/products/app-platform), AWS, or a self-hosted VPS) utilizing the included Dockerfiles and `docker-compose.yml`.
 
-### Option 1: Render Blueprint (Recommended)
-1. Push this repository to GitHub or another supported Git provider.
-2. Go to your Render Dashboard and click **New** -> **Blueprint**.
-3. Connect your repository. Render will automatically detect the `render.yaml` at the root of the project.
-4. Fill in the required Environment Variables in the Render dashboard when prompted (e.g., `GEMINI_API_KEY`).
-5. Click **Apply**. Render will build and deploy both the backend and frontend services.
+### Option 1: Docker Compose (Self-Hosted / VPS)
+You can run the entire stack on a single server using Docker Compose:
 
-### Option 2: Manual Deployment
-If you prefer not to use the Blueprint:
-1. **Deploy the Backend:** Create a new **Web Service** on Render pointing to `backend/` with a Docker runtime.
-2. **Deploy the Frontend:** Create another new **Web Service** on Render pointing to `frontend/` with a Docker runtime, setting `NEXT_PUBLIC_API_URL` to the backend's URL.
+1. Clone the repository on your server.
+2. Create a `.env` file at the root of the project with your required variables:
+   ```env
+   DATABASE_URL=sqlite+aiosqlite:///./financial_agent.db
+   SECRET_KEY=your_super_secret_key_here
+   GEMINI_API_KEY=your_gemini_api_key
+   QDRANT_URL=https://your-qdrant-cluster-url.cloud.qdrant.io
+   QDRANT_API_KEY=your_qdrant_api_key
+   # NEXT_PUBLIC_API_URL should point to the public domain where your backend is hosted
+   NEXT_PUBLIC_API_URL=https://api.yourdomain.com
+   ```
+3. Run the orchestration command:
+   ```bash
+   docker-compose up -d --build
+   ```
+4. The backend will be available on port `8000` and the frontend on port `3000`. We recommend putting a reverse proxy (like Nginx or Traefik) in front of them for SSL.
+
+### Option 2: Platform as a Service (Railway, Render, etc.)
+If you prefer deploying on a managed PaaS, you can deploy the `backend` and `frontend` folders as two separate services:
+
+1. **Deploy the Backend:** 
+   - Create a new **Web Service** on your platform.
+   - Set the Root Directory to `/backend`.
+   - The platform will automatically detect `backend/Dockerfile` and build the Python FastAPI app.
+   - Add your necessary environment variables (`DATABASE_URL`, `GEMINI_API_KEY`, etc.).
+2. **Deploy the Frontend:** 
+   - Create another **Web Service** pointing to the `/frontend` directory.
+   - The platform will detect `frontend/Dockerfile` and build the Next.js app in standalone mode.
+   - **Crucially**, add the `NEXT_PUBLIC_API_URL` environment variable pointing to the public URL of your *deployed backend service*.
 
 *Note: The frontend uses a multi-stage standalone Dockerfile optimized for Next.js, and the backend relies on an optimized `python:3.12-slim` image.*

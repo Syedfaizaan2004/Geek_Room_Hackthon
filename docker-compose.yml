@@ -1,0 +1,34 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ai_financial_agent_backend
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_ENV=production
+      # The database URL for standard Docker (you can override this on your hosting platform)
+      - DATABASE_URL=${DATABASE_URL:-sqlite+aiosqlite:///./financial_agent.db}
+      - SECRET_KEY=${SECRET_KEY:-your_super_secret_key_here}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - QDRANT_URL=${QDRANT_URL}
+      - QDRANT_API_KEY=${QDRANT_API_KEY}
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ai_financial_agent_frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      # In Docker Compose, the frontend container communicates with the backend via the service name or reverse proxy.
+      # However, NEXT_PUBLIC_API_URL handles client-side requests from the user's browser, 
+      # so this needs to be the publicly accessible URL of the backend.
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    depends_on:
+      - backend
+    restart: unless-stopped
