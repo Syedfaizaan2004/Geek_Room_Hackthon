@@ -13,7 +13,14 @@ services:
     envVars:
       - key: APP_ENV
         value: production
-      # Add database URLs, API Keys (e.g., GEMINI_API_KEY) and Qdrant credentials here or dynamically via Render Dashboard
+      - key: DATABASE_URL
+        sync: false
+      - key: QDRANT_URL
+        sync: false
+      - key: QDRANT_API_KEY
+        sync: false
+      - key: SECRET_KEY
+        sync: false
       - key: GEMINI_API_KEY
         sync: false
 

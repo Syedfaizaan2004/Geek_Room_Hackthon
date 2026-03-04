@@ -58,12 +58,17 @@ Example `.env` configuration:
 APP_ENV=development
 DEBUG=True
 
-# LLM Setup (Gemini is recommended for this project setup)
+# Core Application Settings (Required)
+DATABASE_URL=sqlite+aiosqlite:///./financial_agent.db
+SECRET_KEY=your_super_secret_key_here
+
+# LLM Setup (Gemini is recommended)
+LLM_PROVIDER=gemini
 GEMINI_API_KEY=your_gemini_api_key_here
 
-# (Optional) Qdrant settings for Vector DB
-# QDRANT_URL=localhost
-# QDRANT_PORT=6333
+# Qdrant Vector DB Settings (Required for Semantic Memory)
+QDRANT_URL=https://your-qdrant-cluster-url.cloud.qdrant.io
+QDRANT_API_KEY=your_qdrant_api_key
 ```
 
 > **Note:** Set `APP_ENV=production` for production deployments.
