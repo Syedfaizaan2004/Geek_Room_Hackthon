@@ -8,7 +8,7 @@ All logic is deterministic — threshold-based, no LLM.
 """
 
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 from schemas.confidence import UncertaintyDetail
 
@@ -22,11 +22,41 @@ HIGH_EARNINGS_VARIABILITY = 0.30    # earnings margin swung > 30 ppts between ye
 HIGH_SCENARIO_IMPACT = 15.0         # stress test shifts forecast by > 15%
 
 
+def _extract_scenarios(scenario: Any) -> List[Dict[str, Any]]:
+    """Normalize scenario payload to a list of dict rows."""
+    if not scenario:
+        return []
+
+    if isinstance(scenario, list):
+        return [sc for sc in scenario if isinstance(sc, dict)]
+
+    if isinstance(scenario, dict):
+        maybe_list = scenario.get("scenarios", [])
+        if isinstance(maybe_list, list):
+            return [sc for sc in maybe_list if isinstance(sc, dict)]
+
+    return []
+
+
+def _scenario_impact_pct(scenario_row: Dict[str, Any]) -> float:
+    """Return scenario impact pct from explicit or derived fields."""
+    explicit = scenario_row.get("forecast_adjustment_pct")
+    if isinstance(explicit, (int, float)):
+        return float(explicit)
+
+    adjusted = scenario_row.get("adjusted_projection")
+    baseline = scenario_row.get("baseline_projection")
+    if isinstance(adjusted, (int, float)) and isinstance(baseline, (int, float)) and baseline != 0:
+        return ((adjusted - baseline) / baseline) * 100.0
+
+    return 0.0
+
+
 def analyze_uncertainty(
     market: Dict[str, Any],
     forecast: Dict[str, Any],
     fundamentals: Dict[str, Any],
-    scenario: Dict[str, Any],
+    scenario: Any,
 ) -> UncertaintyDetail:
     """
     Evaluate factors that raise uncertainty and produce a classified level.
@@ -75,19 +105,17 @@ def analyze_uncertainty(
             )
 
     # ── Factor 5: Extreme Scenario Sensitivity ────────────────────────────────
-    if scenario:
-        # Check how much the worst scenario shifts the baseline
-        scenarios_list = scenario.get("scenarios", [])
-        for sc in scenarios_list:
-            impact = abs(sc.get("forecast_adjustment_pct", 0.0))
-            if impact > HIGH_SCENARIO_IMPACT:
-                drivers.append(
-                    f"Scenario '{sc.get('scenario_name', 'unknown')}' shifts the baseline "
-                    f"forecast by {impact:.1f}% "
-                    f"(threshold: {HIGH_SCENARIO_IMPACT}%). "
-                    "The analysis is highly sensitive to macro conditions."
-                )
-                break  # Only report once even if multiple scenarios trigger
+    for sc in _extract_scenarios(scenario):
+        impact = abs(_scenario_impact_pct(sc))
+        if impact > HIGH_SCENARIO_IMPACT:
+            scenario_name = sc.get("scenario_name") or sc.get("scenario_type") or "unknown"
+            drivers.append(
+                f"Scenario '{scenario_name}' shifts the baseline "
+                f"forecast by {impact:.1f}% "
+                f"(threshold: {HIGH_SCENARIO_IMPACT}%). "
+                "The analysis is highly sensitive to macro conditions."
+            )
+            break  # Only report once even if multiple scenarios trigger
 
     # ── Classify Level ────────────────────────────────────────────────────────
     n = len(drivers)

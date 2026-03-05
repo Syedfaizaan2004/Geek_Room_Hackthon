@@ -57,12 +57,53 @@ BASE_ASSUMPTIONS: List[str] = [
 ]
 
 
+def _extract_scenarios(scenario: Any) -> List[Dict[str, Any]]:
+    """
+    Normalize scenario payload shape across workflows.
+
+    Supported forms:
+    - Deep workflow list: [ {...}, {...} ]
+    - Legacy dict: {"scenarios": [ {...}, {...} ]}
+    """
+    if not scenario:
+        return []
+
+    if isinstance(scenario, list):
+        return [sc for sc in scenario if isinstance(sc, dict)]
+
+    if isinstance(scenario, dict):
+        maybe_list = scenario.get("scenarios", [])
+        if isinstance(maybe_list, list):
+            return [sc for sc in maybe_list if isinstance(sc, dict)]
+
+    return []
+
+
+def _scenario_impact_pct(scenario_row: Dict[str, Any]) -> float:
+    """
+    Return scenario impact in percentage points.
+
+    Uses explicit `forecast_adjustment_pct` when present.
+    Falls back to (adjusted_projection - baseline_projection) / baseline_projection.
+    """
+    explicit = scenario_row.get("forecast_adjustment_pct")
+    if isinstance(explicit, (int, float)):
+        return float(explicit)
+
+    adjusted = scenario_row.get("adjusted_projection")
+    baseline = scenario_row.get("baseline_projection")
+    if isinstance(adjusted, (int, float)) and isinstance(baseline, (int, float)) and baseline != 0:
+        return ((adjusted - baseline) / baseline) * 100.0
+
+    return 0.0
+
+
 def _compute_completeness(
     market: Dict[str, Any],
     forecast: Dict[str, Any],
     fundamentals: Dict[str, Any],
     risk: Dict[str, Any],
-    scenario: Dict[str, Any],
+    scenario: Any,
     comparison: Dict[str, Any],
 ) -> float:
     """
@@ -106,7 +147,7 @@ def _compute_confidence_score(
     market: Dict[str, Any],
     forecast: Dict[str, Any],
     risk: Dict[str, Any],
-    scenario: Dict[str, Any],
+    scenario: Any,
     completeness: float,
     contradictions: List[ContradictionItem],
     uncertainty: UncertaintyDetail,
@@ -142,12 +183,10 @@ def _compute_confidence_score(
         score -= 10.0
 
     # ── Scenario sensitivity ───────────────────────────────────────────────
-    if scenario:
-        scenarios_list = scenario.get("scenarios", [])
-        for sc in scenarios_list:
-            if abs(sc.get("forecast_adjustment_pct", 0.0)) > 15.0:
-                score -= 5.0
-                break  # only penalise once
+    for sc in _extract_scenarios(scenario):
+        if abs(_scenario_impact_pct(sc)) > 15.0:
+            score -= 5.0
+            break  # only penalise once
 
     # ── Uncertainty level adjustment ───────────────────────────────────────
     if uncertainty.level == "low":
@@ -168,7 +207,7 @@ def _classify_confidence(score: float) -> str:
 
 def _build_assumptions(
     market: Dict, forecast: Dict, fundamentals: Dict,
-    risk: Dict, scenario: Dict, comparison: Dict,
+    risk: Dict, scenario: Any, comparison: Dict,
 ) -> List[str]:
     """Combine base assumptions with context-specific disclosures."""
     assumptions = list(BASE_ASSUMPTIONS)
@@ -200,7 +239,7 @@ def generate_confidence_report(
     forecast: Dict[str, Any],
     fundamentals: Dict[str, Any],
     risk: Dict[str, Any],
-    scenario: Dict[str, Any],
+    scenario: Any,
     comparison: Dict[str, Any],
 ) -> ConfidenceResponse:
     """

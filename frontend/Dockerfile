@@ -17,6 +17,12 @@ COPY . .
 # Next.js telemetry is disabled during the build in production
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Public API base must be available during build for NEXT_PUBLIC_* inlined variables.
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ARG NEXT_PUBLIC_BACKEND_URL
+ENV NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL}
+
 # Build Next.js
 RUN npm run build
 

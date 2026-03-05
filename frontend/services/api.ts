@@ -38,9 +38,36 @@ function deriveRenderBackendFromFrontendHost(): string | null {
     return `${protocol}//${backendHost}/api/v1`;
 }
 
+function deriveGenericBackendFromFrontendHost(): string | null {
+    if (typeof window === "undefined") return null;
+
+    const { protocol, hostname } = window.location;
+    const candidates = [
+        hostname.replace("-frontend", "-backend"),
+        hostname.replace(/^frontend\./i, "backend."),
+        hostname.replace(/^app\./i, "api."),
+    ].filter((value, index, all) => value && value !== hostname && all.indexOf(value) === index);
+
+    if (candidates.length === 0) return null;
+    return `${protocol}//${candidates[0]}/api/v1`;
+}
+
+function deriveSameOriginApiBase(): string | null {
+    if (typeof window === "undefined") return null;
+
+    const { protocol, hostname, origin } = window.location;
+    if (hostname === "localhost" || hostname === "127.0.0.1") {
+        return `${protocol}//${hostname}:8000/api/v1`;
+    }
+    return `${origin}/api/v1`;
+}
+
 const API_BASE =
     normalizeApiBase(process.env.NEXT_PUBLIC_API_URL) ??
+    normalizeApiBase(process.env.NEXT_PUBLIC_BACKEND_URL) ??
     deriveRenderBackendFromFrontendHost() ??
+    deriveGenericBackendFromFrontendHost() ??
+    deriveSameOriginApiBase() ??
     LOCAL_DEFAULT_API_BASE;
 
 export const api = axios.create({
