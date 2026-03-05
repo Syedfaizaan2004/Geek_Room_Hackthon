@@ -56,8 +56,8 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
     # 🧠 Vector Store (Qdrant)
     # ------------------------------------------------------------------
-    QDRANT_URL: str = Field(..., description="Qdrant cloud cluster URL")
-    QDRANT_API_KEY: str = Field(..., description="Qdrant API key")
+    QDRANT_URL: str = Field(default="", description="Qdrant cloud cluster URL")
+    QDRANT_API_KEY: str = Field(default="", description="Qdrant API key")
     QDRANT_COLLECTION: str = Field(default="financial_insights")
 
     # ------------------------------------------------------------------

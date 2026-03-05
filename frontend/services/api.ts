@@ -5,7 +5,6 @@ import axios from "axios";
 import { clearToken, getToken } from "./tokenStorage";
 
 const LOCAL_DEFAULT_API_BASE = "http://localhost:8000/api/v1";
-const BROWSER_PROXY_BASE = "/api/v1";
 
 function normalizeApiBase(rawUrl?: string): string | null {
     if (!rawUrl) return null;
@@ -63,20 +62,15 @@ function deriveSameOriginApiBase(): string | null {
     return `${origin}/api/v1`;
 }
 
-const API_BASE = (() => {
-    // In the browser, always hit the local Next.js proxy route.
-    if (typeof window !== "undefined") return BROWSER_PROXY_BASE;
-
-    // Server-side fallback (rare in this app, but keeps axios valid in non-browser usage).
-    return (
-        normalizeApiBase(process.env.NEXT_PUBLIC_API_URL) ??
-        normalizeApiBase(process.env.NEXT_PUBLIC_BACKEND_URL) ??
-        deriveRenderBackendFromFrontendHost() ??
-        deriveGenericBackendFromFrontendHost() ??
-        deriveSameOriginApiBase() ??
-        LOCAL_DEFAULT_API_BASE
-    );
-})();
+const API_BASE =
+    // Render deployments are deterministic by hostname; prefer this over env so
+    // stale/misconfigured NEXT_PUBLIC_API_URL cannot break auth calls.
+    deriveRenderBackendFromFrontendHost() ??
+    normalizeApiBase(process.env.NEXT_PUBLIC_API_URL) ??
+    normalizeApiBase(process.env.NEXT_PUBLIC_BACKEND_URL) ??
+    deriveGenericBackendFromFrontendHost() ??
+    deriveSameOriginApiBase() ??
+    LOCAL_DEFAULT_API_BASE;
 
 export const api = axios.create({
     baseURL: API_BASE,
