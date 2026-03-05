@@ -3,7 +3,44 @@
 
 import axios from "axios";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+const LOCAL_DEFAULT_API_BASE = "http://localhost:8000/api/v1";
+
+function normalizeApiBase(rawUrl?: string): string | null {
+    if (!rawUrl) return null;
+
+    let url = rawUrl.trim();
+    if (!url) return null;
+
+    // Render fromService.host gives a bare host; browsers require a scheme.
+    if (!/^https?:\/\//i.test(url)) {
+        url = `https://${url}`;
+    }
+
+    url = url.replace(/\/+$/, "");
+    if (!/\/api\/v1$/i.test(url)) {
+        url = `${url}/api/v1`;
+    }
+
+    return url;
+}
+
+function deriveRenderBackendFromFrontendHost(): string | null {
+    if (typeof window === "undefined") return null;
+
+    const { protocol, hostname } = window.location;
+    if (!hostname.endsWith(".onrender.com")) return null;
+    if (!hostname.includes("-frontend")) return null;
+
+    const backendHost = hostname.replace("-frontend", "-backend");
+    if (backendHost === hostname) return null;
+
+    return `${protocol}//${backendHost}/api/v1`;
+}
+
+const API_BASE =
+    normalizeApiBase(process.env.NEXT_PUBLIC_API_URL) ??
+    deriveRenderBackendFromFrontendHost() ??
+    LOCAL_DEFAULT_API_BASE;
 
 export const api = axios.create({
     baseURL: API_BASE,
