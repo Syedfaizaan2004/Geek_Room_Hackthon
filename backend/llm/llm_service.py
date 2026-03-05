@@ -21,17 +21,15 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 _PROVIDER_INSTANCES: dict[str, LLMProvider | None] = {}
-_INIT_ATTEMPTED: set[str] = set()
 
 
 def _get_provider(provider_override: str | None = None) -> LLMProvider | None:
     """Lazy initialization of the configured LLM provider, optionally overridden per request."""
     provider_name = (provider_override or settings.LLM_PROVIDER).lower()
 
-    if provider_name in _INIT_ATTEMPTED:
-        return _PROVIDER_INSTANCES.get(provider_name)
-
-    _INIT_ATTEMPTED.add(provider_name)
+    cached = _PROVIDER_INSTANCES.get(provider_name)
+    if cached is not None:
+        return cached
 
     if provider_name == "disabled":
         logger.info("LLM Enhancement is disabled in config.")
@@ -49,8 +47,10 @@ def _get_provider(provider_override: str | None = None) -> LLMProvider | None:
         else:
             logger.warning(f"Unknown LLM_PROVIDER '{provider_name}'. Disabling LLM.")
     except ValueError as e:
+        _PROVIDER_INSTANCES.pop(provider_name, None)
         logger.warning(f"LLM Provider initialization skipped: {e}")
     except Exception as e:
+        _PROVIDER_INSTANCES.pop(provider_name, None)
         logger.error(f"Failed to initialize LLM Provider: {e}")
 
     return _PROVIDER_INSTANCES.get(provider_name)

@@ -1,5 +1,5 @@
 'use client';
-import { CheckCircle, AlertCircle, XCircle, Info } from 'lucide-react';
+import { CheckCircle, AlertCircle, Info } from 'lucide-react';
 
 interface Props {
     data: {
@@ -31,7 +31,7 @@ export default function ConfidencePanel({ data, loading }: Props) {
                 <h3 className="text-sm font-semibold text-white">Confidence & Transparency</h3>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
                 <div className="rounded-lg p-3 text-center" style={{ background: 'var(--bg-primary)' }}>
                     <p className="text-3xl font-bold" style={{ color }}>{score.toFixed(0)}</p>
                     <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>Confidence Score</p>

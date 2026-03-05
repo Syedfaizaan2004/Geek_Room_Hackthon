@@ -47,9 +47,9 @@ export default function ChatPage() {
 
     return (
         <DashboardLayout>
-            <div className="max-w-3xl mx-auto flex flex-col h-[calc(100vh-3rem)]">
+            <div className="max-w-3xl mx-auto flex flex-col h-[calc(100vh-6rem)] md:h-[calc(100vh-3rem)]">
                 {/* Header */}
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
                     <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(6,182,212,0.2)' }}>
                             <Bot size={16} style={{ color: '#06b6d4' }} />
@@ -59,16 +59,16 @@ export default function ChatPage() {
                             <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Conversational research powered by LLM + memory recall</p>
                         </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
                         <input value={ticker} onChange={(e) => setTicker(e.target.value.toUpperCase())}
                             placeholder="Ticker context"
-                            className="px-3 py-1.5 rounded-lg text-xs text-white outline-none w-28"
+                            className="px-3 py-1.5 rounded-lg text-xs text-white outline-none flex-1 sm:flex-none sm:w-28"
                             style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}
                         />
                         <select
                             value={provider}
                             onChange={(e) => setProvider(e.target.value as ChatProvider)}
-                            className="px-3 py-1.5 rounded-lg text-xs text-white outline-none"
+                            className="px-3 py-1.5 rounded-lg text-xs text-white outline-none flex-1 sm:flex-none"
                             style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}
                             aria-label="Chat LLM provider"
                         >
@@ -86,7 +86,7 @@ export default function ChatPage() {
                                 style={{ background: msg.role === 'user' ? 'var(--accent)' : 'rgba(6,182,212,0.2)' }}>
                                 {msg.role === 'user' ? <User size={13} className="text-white" /> : <Bot size={13} style={{ color: '#06b6d4' }} />}
                             </div>
-                            <div className="max-w-[80%]">
+                            <div className="max-w-[92%] sm:max-w-[80%]">
                                 <div className="rounded-2xl px-4 py-3 text-sm leading-relaxed"
                                     style={msg.role === 'user'
                                         ? { background: 'var(--accent)', color: 'white' }
@@ -125,7 +125,7 @@ export default function ChatPage() {
                 </div>
 
                 {/* Input */}
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                     <input value={input} onChange={(e) => setInput(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && send()}
                         placeholder="Ask about any ticker, risk, or past analysis..."
@@ -133,7 +133,7 @@ export default function ChatPage() {
                         style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}
                     />
                     <button onClick={send} disabled={!input.trim() || loading}
-                        className="px-4 py-3 rounded-xl transition-all disabled:opacity-50 flex items-center"
+                        className="w-full sm:w-auto px-4 py-3 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center"
                         style={{ background: 'var(--accent)' }}>
                         <Send size={16} className="text-white" />
                     </button>

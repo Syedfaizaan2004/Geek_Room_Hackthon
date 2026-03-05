@@ -90,13 +90,13 @@ function ScenarioContent() {
                 <div className="space-y-4">
                     <div className="card">
                         <h3 className="text-sm font-semibold text-white mb-3 capitalize">{result.scenario_type.replace(/_/g, ' ')} impact</h3>
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <Metric label="Baseline Projection" value={`$${result.baseline_projection.toFixed(2)}`} />
                             <Metric label="Adjusted Projection" value={`$${result.adjusted_projection.toFixed(2)}`} />
                             <Metric label="Baseline Risk" value={result.baseline_risk_score.toFixed(1)} />
                             <Metric label="Adjusted Risk" value={result.adjusted_risk_score.toFixed(1)} />
                         </div>
-                        <div className="grid grid-cols-2 gap-3 mt-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
                             <Metric
                                 label="Projection Delta"
                                 value={`${projDelta && projDelta > 0 ? '+' : ''}${(projDelta ?? 0).toFixed(2)}`}

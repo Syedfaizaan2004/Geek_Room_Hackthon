@@ -20,14 +20,14 @@ export default function Home() {
       <div className="max-w-5xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-white">Research Dashboard</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-white">Research Dashboard</h1>
           <p style={{ color: 'var(--text-muted)' }} className="text-sm mt-1">
             AI-powered financial analysis with real-time market data and LLM insights
           </p>
         </div>
 
         {/* Quick Action Grid */}
-        <div className="grid grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mb-8">
           {quickLinks.map(({ href, icon: Icon, label, desc, color }) => (
             <Link key={href} href={href}
               className="card hover:border-opacity-80 transition-all group p-5"

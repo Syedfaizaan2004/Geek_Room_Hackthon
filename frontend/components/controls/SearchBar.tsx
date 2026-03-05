@@ -16,6 +16,10 @@ export default function SearchBar({ onAnalyze, loading, placeholder = 'Search co
     const [showDropdown, setShowDropdown] = useState(false);
     const [debouncedQuery, setDebouncedQuery] = useState(defaultValue);
     const wrapperRef = useRef<HTMLDivElement>(null);
+    const resetSuggestions = useCallback(() => {
+        setSuggestions([]);
+        setShowDropdown(false);
+    }, []);
 
     // Debounce the query
     useEffect(() => {
@@ -25,16 +29,31 @@ export default function SearchBar({ onAnalyze, loading, placeholder = 'Search co
 
     // Fetch suggestions
     useEffect(() => {
-        if (debouncedQuery.trim().length >= 2) {
-            suggestCompany(debouncedQuery).then(res => {
+        const normalized = debouncedQuery.trim();
+        if (normalized.length < 2) {
+            queueMicrotask(() => {
+                setSuggestions([]);
+                setShowDropdown(false);
+            });
+            return;
+        }
+
+        let active = true;
+        suggestCompany(normalized)
+            .then((res) => {
+                if (!active) return;
                 setSuggestions(res);
                 setShowDropdown(true);
+            })
+            .catch(() => {
+                if (!active) return;
+                resetSuggestions();
             });
-        } else {
-            setSuggestions([]);
-            setShowDropdown(false);
-        }
-    }, [debouncedQuery]);
+
+        return () => {
+            active = false;
+        };
+    }, [debouncedQuery, resetSuggestions]);
 
     // Close dropdown on click outside
     useEffect(() => {
@@ -109,7 +128,7 @@ export default function SearchBar({ onAnalyze, loading, placeholder = 'Search co
 
     return (
         <div className="relative w-full" ref={wrapperRef}>
-            <form onSubmit={handleSubmit} className="flex gap-2">
+            <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-2">
                 <div className="relative flex-1">
                     <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
                     <input
@@ -126,7 +145,7 @@ export default function SearchBar({ onAnalyze, loading, placeholder = 'Search co
                     />
                 </div>
                 <button type="submit" disabled={!query.trim() || loading}
-                    className="px-6 py-3 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-50 flex items-center gap-2"
+                    className="w-full sm:w-auto px-6 py-3 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                     style={{ background: 'var(--accent)' }}>
                     {loading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
                     {loading ? 'Analyzing...' : 'Analyze'}
@@ -135,7 +154,7 @@ export default function SearchBar({ onAnalyze, loading, placeholder = 'Search co
 
             {/* Suggestions Dropdown */}
             {showDropdown && suggestions.length > 0 && (
-                <div className="absolute top-full left-0 right-28 mt-2 py-2 rounded-xl shadow-xl z-50 animate-in fade-in slide-in-from-top-2"
+                <div className="absolute top-full left-0 right-0 mt-2 py-2 rounded-xl shadow-xl z-50 animate-in fade-in slide-in-from-top-2"
                     style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
                     {suggestions.map((item) => (
                         <button

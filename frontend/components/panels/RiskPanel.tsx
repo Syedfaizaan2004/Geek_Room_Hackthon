@@ -60,7 +60,7 @@ export default function RiskPanel({ data, loading }: Props) {
                 <div className="h-2 rounded-full transition-all" style={{ width: `${score}%`, background: color }} />
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {subRisks.map(({ label, val }) => (
                     <div key={label} className="rounded-lg p-2.5" style={{ background: 'var(--bg-primary)' }}>
                         <div className="flex justify-between items-center mb-1">

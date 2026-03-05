@@ -1,9 +1,9 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { login, register } from '@/services/auth';
 import { useAuthStore } from '@/store/authStore';
-import { Brain, TrendingUp, User, Hash, Calendar, AlertCircle, CheckCircle, ShieldCheck, Activity, LineChart, Lock } from 'lucide-react';
+import { Brain, User, Hash, AlertCircle, CheckCircle, ShieldCheck, Activity, LineChart, Lock } from 'lucide-react';
 
 type Mode = 'login' | 'register';
 
@@ -20,8 +20,18 @@ export default function LoginPage() {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [loading, setLoading] = useState(false);
-    const { login: storeLogin } = useAuthStore();
+    const { login: storeLogin, hydrate, hydrated, isAuthenticated } = useAuthStore();
     const router = useRouter();
+
+    useEffect(() => {
+        hydrate();
+    }, [hydrate]);
+
+    useEffect(() => {
+        if (hydrated && isAuthenticated) {
+            router.replace('/');
+        }
+    }, [hydrated, isAuthenticated, router]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();

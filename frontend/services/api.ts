@@ -2,6 +2,7 @@
 // Base Axios instance wired to the FastAPI backend.
 
 import axios from "axios";
+import { clearToken, getToken } from "./tokenStorage";
 
 const LOCAL_DEFAULT_API_BASE = "http://localhost:8000/api/v1";
 
@@ -48,12 +49,10 @@ export const api = axios.create({
     timeout: 120_000, // Deep mode can take a while
 });
 
-// Attach JWT token from sessionStorage before each request
+// Attach JWT token before each request.
 api.interceptors.request.use((config) => {
-    if (typeof window !== "undefined") {
-        const token = sessionStorage.getItem("access_token");
-        if (token) config.headers.Authorization = `Bearer ${token}`;
-    }
+    const token = getToken();
+    if (token) config.headers.Authorization = `Bearer ${token}`;
     return config;
 });
 
@@ -62,7 +61,7 @@ api.interceptors.response.use(
     (res) => res,
     (err) => {
         if (err?.response?.status === 401 && typeof window !== "undefined") {
-            sessionStorage.removeItem("access_token");
+            clearToken();
             window.location.href = "/login";
         }
         return Promise.reject(err);

@@ -82,7 +82,7 @@ function QuickContent() {
 
             {/* Error state with retry */}
             {error && (
-                <div className="flex items-center justify-between p-4 rounded-xl text-sm fade-in"
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-4 rounded-xl text-sm fade-in"
                     style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' }}>
                     <div className="flex items-center gap-2">
                         <AlertTriangle size={14} /> {error}

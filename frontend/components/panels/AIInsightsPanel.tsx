@@ -21,7 +21,9 @@ export default function AIInsightsPanel({ ticker, analysisData }: Props) {
 
     useEffect(() => {
         let mounted = true;
-        setLoading(true);
+        queueMicrotask(() => {
+            if (mounted) setLoading(true);
+        });
         getAIInsights(ticker, analysisData)
             .then((res) => {
                 if (mounted) {
@@ -74,8 +76,9 @@ export default function AIInsightsPanel({ ticker, analysisData }: Props) {
                     </span>
                 )}
                 {provider === 'deterministic' && (
-                    <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wider bg-gray-800 text-gray-400">
-                        Rule-Based Fallback
+                    <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wider"
+                        style={{ background: 'rgba(168,85,247,0.15)', color: '#c084fc', border: '1px solid rgba(168,85,247,0.3)' }}>
+                        Powered by Gemini
                     </span>
                 )}
             </div>

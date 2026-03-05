@@ -49,17 +49,3 @@ export async function fetchMe(): Promise<UserResponse> {
     const res = await api.get<UserResponse>("/auth/me");
     return res.data;
 }
-
-export function saveToken(token: string) {
-    sessionStorage.setItem("access_token", token);
-}
-
-export function clearToken() {
-    sessionStorage.removeItem("access_token");
-}
-
-export function getToken(): string | null {
-    return typeof window !== "undefined"
-        ? sessionStorage.getItem("access_token")
-        : null;
-}

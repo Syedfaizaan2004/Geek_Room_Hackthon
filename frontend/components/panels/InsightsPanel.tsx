@@ -46,7 +46,7 @@ export default function InsightsPanel({ data, loading }: Props) {
             )}
 
             {/* Bull vs Bear */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="p-3 rounded-lg" style={{ background: 'rgba(16,185,129,0.05)', border: '1px solid rgba(16,185,129,0.2)' }}>
                     <div className="flex items-center gap-1.5 mb-2">
                         <TrendingUp size={12} style={{ color: '#10b981' }} />

@@ -107,7 +107,7 @@ export default function ProfitLossChart({ fundamentals, ticker = '', loading }: 
             )}
 
             {/* Summary grid */}
-            <div className="grid grid-cols-2 gap-2 pt-2" style={{ borderTop: '1px solid var(--border)' }}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2" style={{ borderTop: '1px solid var(--border)' }}>
                 {[
                     { label: 'Revenue Growth', value: pct((fundamentals.growth as Record<string, unknown>)?.revenue_growth_yoy), suffix: '%' },
                     { label: 'Earnings Growth', value: pct((fundamentals.growth as Record<string, unknown>)?.earnings_growth_yoy), suffix: '%' },

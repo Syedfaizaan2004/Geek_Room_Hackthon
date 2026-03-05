@@ -1,13 +1,11 @@
-// store/authStore.ts
-// Zustand global auth state — token stored in sessionStorage (not localStorage)
-
 "use client";
 import { create } from "zustand";
-import { clearToken, getToken, saveToken } from "@/services/auth";
+import { clearToken, getToken, saveToken } from "@/services/tokenStorage";
 
 interface AuthState {
     token: string | null;
     isAuthenticated: boolean;
+    hydrated: boolean;
     login: (token: string) => void;
     logout: () => void;
     hydrate: () => void;
@@ -16,19 +14,20 @@ interface AuthState {
 export const useAuthStore = create<AuthState>((set) => ({
     token: null,
     isAuthenticated: false,
+    hydrated: false,
 
     login: (token: string) => {
         saveToken(token);
-        set({ token, isAuthenticated: true });
+        set({ token, isAuthenticated: true, hydrated: true });
     },
 
     logout: () => {
         clearToken();
-        set({ token: null, isAuthenticated: false });
+        set({ token: null, isAuthenticated: false, hydrated: true });
     },
 
     hydrate: () => {
         const token = getToken();
-        set({ token, isAuthenticated: !!token });
+        set({ token, isAuthenticated: !!token, hydrated: true });
     },
 }));

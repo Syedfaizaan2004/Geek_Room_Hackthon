@@ -102,7 +102,7 @@ export default function StockPriceChart({ forecast, market, ticker = '', loading
             </div>
 
             {/* Key metrics row */}
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
                 {[
                     { label: 'Current', value: fmt(current), color: '#94a3b8' },
                     { label: 'Target', value: fmt(mid), color: biasColor },
