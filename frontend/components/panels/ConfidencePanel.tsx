@@ -5,9 +5,11 @@ interface Props {
     data: {
         confidence_score?: number;
         confidence_classification?: string;
+        confidence_level?: string;
         data_completeness_pct?: number;
-        contradictions?: { title?: string; description?: string; severity?: string }[];
-        uncertainty?: { level?: string; factors?: string[] };
+        completeness_score?: number;
+        contradictions?: { title?: string; description?: string; explanation?: string; type?: string; severity?: string }[];
+        uncertainty?: { level?: string; factors?: string[]; drivers?: string[] };
         assumptions?: string[];
     } | null;
     loading?: boolean;
@@ -21,7 +23,9 @@ export default function ConfidencePanel({ data, loading }: Props) {
     if (!data) return null;
 
     const score = data.confidence_score ?? 0;
-    const cls = data.confidence_classification;
+    const cls = data.confidence_classification ?? data.confidence_level;
+    const completeness = data.data_completeness_pct ?? data.completeness_score;
+    const uncertaintyFactors = data.uncertainty?.factors ?? data.uncertainty?.drivers ?? [];
     const color = levelColor(cls);
 
     return (
@@ -38,7 +42,7 @@ export default function ConfidencePanel({ data, loading }: Props) {
                     <span className="badge mt-1" style={{ background: `${color}20`, color }}>{cls ?? 'N/A'}</span>
                 </div>
                 <div className="rounded-lg p-3 text-center" style={{ background: 'var(--bg-primary)' }}>
-                    <p className="text-3xl font-bold text-white">{data.data_completeness_pct?.toFixed(0) ?? '?'}%</p>
+                    <p className="text-3xl font-bold text-white">{completeness != null ? `${completeness.toFixed(0)}%` : '?'}</p>
                     <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>Data Completeness</p>
                 </div>
             </div>
@@ -53,8 +57,8 @@ export default function ConfidencePanel({ data, loading }: Props) {
                             {data.uncertainty.level?.toUpperCase()}
                         </span>
                     </div>
-                    {data.uncertainty.factors?.slice(0, 2).map((f, i) => (
-                        <p key={i} className="text-xs" style={{ color: 'var(--text-muted)' }}>• {f}</p>
+                    {uncertaintyFactors.slice(0, 2).map((f, i) => (
+                        <p key={i} className="text-xs" style={{ color: 'var(--text-muted)' }}>- {f}</p>
                     ))}
                 </div>
             )}
@@ -69,7 +73,9 @@ export default function ConfidencePanel({ data, loading }: Props) {
                         </span>
                     </div>
                     {data.contradictions!.slice(0, 2).map((c, i) => (
-                        <p key={i} className="text-xs" style={{ color: 'var(--text-muted)' }}>• {c.title}</p>
+                        <p key={i} className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                            - {c.title ?? c.explanation ?? c.type ?? 'Potential data inconsistency detected'}
+                        </p>
                     ))}
                 </div>
             )}

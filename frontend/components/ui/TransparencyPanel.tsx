@@ -10,12 +10,26 @@ interface TransparencyPanelProps {
     market?: Record<string, unknown>;
 }
 
-export default function TransparencyPanel({ confidence, market }: TransparencyPanelProps) {
+export default function TransparencyPanel({ confidence }: TransparencyPanelProps) {
     if (!confidence) return null;
 
-    const completeness = (confidence.data_completeness_pct as number) ?? 0;
-    const contradictions = (confidence.contradictions as Array<{ title?: string; severity?: string }>) ?? [];
-    const uncertainty = confidence.uncertainty as { level?: string; factors?: string[] } | undefined;
+    const completenessRaw =
+        (confidence.data_completeness_pct as number | undefined) ??
+        (confidence.completeness_score as number | undefined);
+    const completeness = typeof completenessRaw === 'number' ? completenessRaw : 0;
+
+    const contradictionRows = (confidence.contradictions as Array<Record<string, unknown>> | undefined) ?? [];
+    const contradictions = contradictionRows.map((c) => ({
+        title:
+            (c.title as string | undefined) ??
+            (c.explanation as string | undefined) ??
+            (c.type as string | undefined) ??
+            'Potential data inconsistency detected',
+        severity: c.severity as string | undefined,
+    }));
+
+    const uncertainty = confidence.uncertainty as { level?: string; factors?: string[]; drivers?: string[] } | undefined;
+    const uncertaintyFactors = uncertainty?.factors ?? uncertainty?.drivers ?? [];
 
     const ASSUMPTIONS = [
         'Market data sourced from yfinance (15-min delayed)',
@@ -86,11 +100,11 @@ export default function TransparencyPanel({ confidence, market }: TransparencyPa
                 )}
 
                 {/* Uncertainty */}
-                {uncertainty?.factors && uncertainty.factors.length > 0 && (
+                {uncertaintyFactors.length > 0 && (
                     <div>
                         <p className="text-[10px] font-semibold mb-2" style={{ color: 'var(--text-muted)' }}>UNCERTAINTY FACTORS</p>
                         <div className="flex flex-wrap gap-2">
-                            {uncertainty.factors.map((f, i) => (
+                            {uncertaintyFactors.map((f, i) => (
                                 <span key={i} className="text-[11px] px-2 py-1 rounded-lg"
                                     style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>
                                     {f}
