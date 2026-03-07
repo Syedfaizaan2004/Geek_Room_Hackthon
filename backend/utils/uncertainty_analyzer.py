@@ -1,25 +1,39 @@
 """
-utils/uncertainty_analyzer.py — Uncertainty level classification (Phase 11).
+utils/uncertainty_analyzer.py - Uncertainty level classification.
 
 Identifies factors that increase analytical uncertainty and classifies
 the overall uncertainty level as low / moderate / high.
 
-All logic is deterministic — threshold-based, no LLM.
+All logic is deterministic and threshold-based.
 """
 
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 from schemas.confidence import UncertaintyDetail
 
 logger = logging.getLogger(__name__)
 
-# Thresholds (all configurable in one place)
-HIGH_VOLATILITY_PCT = 30.0          # annualised volatility > 30%
+# Thresholds
+HIGH_VOLATILITY_PCT = 30.0          # annualized volatility > 30%
 WIDE_UNCERTAINTY_BAND_PCT = 40.0    # forecast uncertainty band > 40%
 SHORT_HISTORY_YEARS = 3             # fewer than 3 years of financial data
 HIGH_EARNINGS_VARIABILITY = 0.30    # earnings margin swung > 30 ppts between years
 HIGH_SCENARIO_IMPACT = 15.0         # stress test shifts forecast by > 15%
+
+
+def _normalize_pct(value: Any) -> Optional[float]:
+    """
+    Normalize percent-like values from either decimal (0.18) or percent (18.0) form.
+    Returns None when the input is not numeric.
+    """
+    if not isinstance(value, (int, float)):
+        return None
+    pct = float(value)
+    # Many engines store percentages as decimals, e.g., 0.18 == 18%
+    if abs(pct) <= 1.5:
+        pct *= 100.0
+    return pct
 
 
 def _extract_scenarios(scenario: Any) -> List[Dict[str, Any]]:
@@ -39,10 +53,10 @@ def _extract_scenarios(scenario: Any) -> List[Dict[str, Any]]:
 
 
 def _scenario_impact_pct(scenario_row: Dict[str, Any]) -> float:
-    """Return scenario impact pct from explicit or derived fields."""
-    explicit = scenario_row.get("forecast_adjustment_pct")
-    if isinstance(explicit, (int, float)):
-        return float(explicit)
+    """Return scenario impact percent from explicit or derived fields."""
+    explicit = _normalize_pct(scenario_row.get("forecast_adjustment_pct"))
+    if explicit is not None:
+        return explicit
 
     adjusted = scenario_row.get("adjusted_projection")
     baseline = scenario_row.get("baseline_projection")
@@ -50,6 +64,57 @@ def _scenario_impact_pct(scenario_row: Dict[str, Any]) -> float:
         return ((adjusted - baseline) / baseline) * 100.0
 
     return 0.0
+
+
+def _extract_band_width_pct(forecast: Dict[str, Any]) -> Optional[float]:
+    """
+    Resolve forecast uncertainty width across legacy and current schemas.
+    """
+    # Legacy shape: explicit +/- bands
+    upper = _normalize_pct(forecast.get("uncertainty_band_upper_pct"))
+    lower = _normalize_pct(forecast.get("uncertainty_band_lower_pct"))
+    if upper is not None or lower is not None:
+        return abs(upper or 0.0) + abs(lower or 0.0)
+
+    # Current schema shape: forecast.uncertainty.uncertainty_percent
+    uncertainty_obj = forecast.get("uncertainty")
+    if isinstance(uncertainty_obj, dict):
+        width = _normalize_pct(uncertainty_obj.get("uncertainty_percent"))
+        if width is not None:
+            return abs(width)
+
+    # Additional fallback for minimal forecast payloads
+    expected_move = _normalize_pct(forecast.get("expected_move_percent"))
+    if expected_move is not None:
+        # Approximate full span around midpoint as +move and -move
+        return abs(expected_move) * 2.0
+
+    return None
+
+
+def _extract_history_years(fundamentals: Dict[str, Any]) -> Optional[float]:
+    """
+    Resolve years of financial history across schema versions.
+    """
+    years = fundamentals.get("years_of_data")
+    if isinstance(years, (int, float)):
+        return float(years)
+
+    years = fundamentals.get("data_years_used")
+    if isinstance(years, (int, float)):
+        return float(years)
+
+    return None
+
+
+def _extract_margin_variability(fundamentals: Dict[str, Any]) -> Optional[float]:
+    """
+    Resolve earnings margin variability when available.
+    """
+    variability = fundamentals.get("earnings_margin_variability")
+    if isinstance(variability, (int, float)):
+        return float(variability)
+    return None
 
 
 def analyze_uncertainty(
@@ -63,48 +128,46 @@ def analyze_uncertainty(
 
     Returns UncertaintyDetail(level, drivers).
     """
-    drivers = []
+    drivers: List[str] = []
 
-    # ── Factor 1: High Market Volatility ─────────────────────────────────────
-    vol = market.get("volatility_percent", 0.0) if market else 0.0
-    if vol > HIGH_VOLATILITY_PCT:
+    # Factor 1: High market volatility
+    vol_pct = _normalize_pct((market or {}).get("volatility_percent"))
+    if vol_pct is not None and vol_pct > HIGH_VOLATILITY_PCT:
         drivers.append(
-            f"Market volatility is elevated at {vol:.1f}% (threshold: {HIGH_VOLATILITY_PCT}%). "
-            "Price behaviour is erratic and forecast reliability is reduced."
+            f"Market volatility is elevated at {vol_pct:.1f}% (threshold: {HIGH_VOLATILITY_PCT}%). "
+            "Price behavior is erratic and forecast reliability is reduced."
         )
 
-    # ── Factor 2: Wide Forecast Uncertainty Band ──────────────────────────────
+    # Factor 2: Wide forecast uncertainty band
     if forecast:
-        band_upper = forecast.get("uncertainty_band_upper_pct", 0.0)
-        band_lower = forecast.get("uncertainty_band_lower_pct", 0.0)
-        band_width = abs(band_upper) + abs(band_lower)
-        if band_width > WIDE_UNCERTAINTY_BAND_PCT:
+        band_width = _extract_band_width_pct(forecast)
+        if band_width is not None and band_width > WIDE_UNCERTAINTY_BAND_PCT:
             drivers.append(
                 f"Forecast uncertainty band spans {band_width:.1f}% "
                 f"(threshold: {WIDE_UNCERTAINTY_BAND_PCT}%). "
                 "The expected price range is too wide to give high-certainty directional guidance."
             )
 
-    # ── Factor 3: Short Financial History ────────────────────────────────────
+    # Factor 3: Short financial history
     if fundamentals:
-        years = fundamentals.get("years_of_data", None)
+        years = _extract_history_years(fundamentals)
         if years is not None and years < SHORT_HISTORY_YEARS:
             drivers.append(
-                f"Only {years} year(s) of financial history available "
+                f"Only {years:.0f} year(s) of financial history available "
                 f"(minimum recommended: {SHORT_HISTORY_YEARS}). "
                 "Short history reduces reliability of trend and ratio analysis."
             )
 
-    # ── Factor 4: High Earnings Variability ──────────────────────────────────
+    # Factor 4: High earnings variability
     if fundamentals:
-        margin_variability = fundamentals.get("earnings_margin_variability", None)
+        margin_variability = _extract_margin_variability(fundamentals)
         if margin_variability is not None and margin_variability > HIGH_EARNINGS_VARIABILITY:
             drivers.append(
                 f"Earnings margin variability is high ({margin_variability:.1%}). "
                 "Inconsistent profitability makes forward projections less reliable."
             )
 
-    # ── Factor 5: Extreme Scenario Sensitivity ────────────────────────────────
+    # Factor 5: Extreme scenario sensitivity
     for sc in _extract_scenarios(scenario):
         impact = abs(_scenario_impact_pct(sc))
         if impact > HIGH_SCENARIO_IMPACT:
@@ -115,9 +178,9 @@ def analyze_uncertainty(
                 f"(threshold: {HIGH_SCENARIO_IMPACT}%). "
                 "The analysis is highly sensitive to macro conditions."
             )
-            break  # Only report once even if multiple scenarios trigger
+            break
 
-    # ── Classify Level ────────────────────────────────────────────────────────
+    # Classify level by driver count
     n = len(drivers)
     if n == 0:
         level = "low"
@@ -126,5 +189,5 @@ def analyze_uncertainty(
     else:
         level = "high"
 
-    logger.debug(f"Uncertainty analysis: level={level}, drivers={n}")
+    logger.debug("Uncertainty analysis: level=%s, drivers=%s", level, n)
     return UncertaintyDetail(level=level, drivers=drivers)

@@ -8,6 +8,7 @@ No other file should call os.getenv() or read .env directly.
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, field_validator
 
@@ -134,10 +135,33 @@ class Settings(BaseSettings):
     @field_validator("APP_ENV")
     @classmethod
     def validate_env(cls, v: str) -> str:
+        aliases = {
+            "dev": "development",
+            "prod": "production",
+            "release": "production",
+        }
+        normalized = aliases.get(v.strip().lower(), v.strip().lower())
         allowed = {"development", "staging", "production"}
-        if v.lower() not in allowed:
+        if normalized not in allowed:
             raise ValueError(f"APP_ENV must be one of {allowed}, got '{v}'")
-        return v.lower()
+        return normalized
+
+    @field_validator("DEBUG", mode="before")
+    @classmethod
+    def parse_debug(cls, v: Any) -> Any:
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, (int, float)):
+            return bool(v)
+        if isinstance(v, str):
+            normalized = v.strip().lower()
+            truthy = {"1", "true", "yes", "y", "on", "debug", "development", "dev"}
+            falsy = {"0", "false", "no", "n", "off", "release", "production", "prod"}
+            if normalized in truthy:
+                return True
+            if normalized in falsy:
+                return False
+        return v
 
     @field_validator("LLM_PROVIDER")
     @classmethod

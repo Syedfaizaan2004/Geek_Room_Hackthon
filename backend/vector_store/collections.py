@@ -50,6 +50,7 @@ async def ensure_collection_exists(client: AsyncQdrantClient) -> bool:
             ("insight_type", PayloadSchemaType.KEYWORD),
             ("risk_score", PayloadSchemaType.FLOAT),
             ("financial_health_score", PayloadSchemaType.FLOAT),
+            ("timestamp", PayloadSchemaType.DATETIME),
         ]
         for field_name, field_schema in index_specs:
             try:

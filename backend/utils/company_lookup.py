@@ -161,6 +161,13 @@ COMPANY_MAP: dict[str, tuple[str, str]] = {
 }
 
 
+TICKER_NAME_MAP: dict[str, str] = {}
+for _, (mapped_ticker, mapped_name) in COMPANY_MAP.items():
+    t = (mapped_ticker or "").strip().upper()
+    if t and t not in TICKER_NAME_MAP:
+        TICKER_NAME_MAP[t] = mapped_name
+
+
 
 def _append_unique(
     results: list[dict[str, str]],
@@ -262,6 +269,32 @@ def search_company(query: str) -> Optional[dict]:
     # 4. Dynamic fallback
     dynamic_matches = _yfinance_lookup(query, limit=1)
     return dynamic_matches[0] if dynamic_matches else None
+
+
+def resolve_ticker(ticker: str) -> Optional[dict]:
+    """
+    Resolve a ticker symbol to canonical company name.
+    """
+    normalized = ticker.strip().upper()
+    if not normalized:
+        return None
+
+    if normalized in TICKER_NAME_MAP:
+        return {"ticker": normalized, "company_name": TICKER_NAME_MAP[normalized]}
+
+    dynamic_matches = _yfinance_lookup(normalized, limit=3)
+    for item in dynamic_matches:
+        if item.get("ticker", "").upper() == normalized:
+            return {"ticker": normalized, "company_name": item.get("company_name", normalized)}
+
+    if dynamic_matches:
+        first = dynamic_matches[0]
+        return {
+            "ticker": first.get("ticker", normalized).upper(),
+            "company_name": first.get("company_name", normalized),
+        }
+
+    return None
 
 
 def get_suggestions(query: str, limit: int = 6) -> list[dict]:

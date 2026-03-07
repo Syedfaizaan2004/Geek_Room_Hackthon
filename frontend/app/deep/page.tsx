@@ -20,6 +20,7 @@ import ExportBar from '@/components/ui/ExportBar';
 import StockPriceChart from '@/components/charts/StockPriceChart';
 import ProfitLossChart from '@/components/charts/ProfitLossChart';
 import { runAnalysis, AgentResponseData } from '@/services/agent';
+import { useCompanyIdentity } from '@/hooks/useCompanyIdentity';
 import { Brain, AlertTriangle, ShieldAlert, RefreshCw, BarChart3, DollarSign } from 'lucide-react';
 
 // ─── Typed helpers from real backend schemas ────────────────────────────────
@@ -95,6 +96,8 @@ function DeepPageContent() {
     const d = data;
     const demoMode = !!(d?.demo_mode);
     const recs = d?.recommendations as Parameters<typeof SmartRecommendationPanel>[0]['recommendations'];
+    const activeTicker = (response?.ticker ?? ticker ?? '').toUpperCase();
+    const { displayLabel } = useCompanyIdentity(activeTicker);
     const fore = d?.forecast as ForecastData | null;
     const fund = d?.fundamentals as FundamentalsData | null;
     const mkt = d?.market as Record<string, unknown> | null;
@@ -145,6 +148,11 @@ function DeepPageContent() {
                     </div>
                     <div>
                         <h1 className="text-xl font-bold text-white">Deep Research</h1>
+                        {activeTicker && (
+                            <p className="text-xs mt-1" style={{ color: '#c4b5fd' }}>
+                                {displayLabel}
+                            </p>
+                        )}
                         <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
                             Full 8-engine pipeline · fundamentals · forecast · risk · scenario · comparison · LLM narrative
                         </p>
@@ -404,3 +412,4 @@ export default function DeepPage() {
         </Suspense>
     );
 }
+

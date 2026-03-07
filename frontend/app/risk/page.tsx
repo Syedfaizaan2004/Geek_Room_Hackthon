@@ -5,6 +5,7 @@ import DashboardLayout from '@/components/layout/DashboardLayout';
 import { ShieldAlert } from 'lucide-react';
 import SearchBar from '@/components/controls/SearchBar';
 import RiskPanel from '@/components/panels/RiskPanel';
+import { useCompanyIdentity } from '@/hooks/useCompanyIdentity';
 import { getRiskProfile, RiskResponse } from '@/services/risk';
 
 function RiskContent() {
@@ -13,6 +14,8 @@ function RiskContent() {
     const [risk, setRisk] = useState<RiskResponse | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const activeTicker = (risk?.ticker ?? ticker ?? '').toUpperCase();
+    const { displayLabel } = useCompanyIdentity(activeTicker);
 
     const analyze = async (inputTicker: string) => {
         setTicker(inputTicker);
@@ -48,6 +51,11 @@ function RiskContent() {
                 <div>
                     <h1 className="text-xl font-bold text-white">Risk Overview</h1>
                     <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Full risk profile including leverage, liquidity, earnings, and hidden risks</p>
+                    {activeTicker && (
+                        <p className="text-xs mt-1" style={{ color: '#fca5a5' }}>
+                            {displayLabel}
+                        </p>
+                    )}
                 </div>
             </div>
 

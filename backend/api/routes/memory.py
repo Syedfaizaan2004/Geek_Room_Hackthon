@@ -18,6 +18,7 @@ from schemas.memory import (
     MemorySearchRequest,
     MemorySearchResponse,
     MemorySimilarResult,
+    MemoryRecentResult,
     RiskPatternResult,
 )
 
@@ -169,4 +170,37 @@ async def get_risk_pattern(
         raise
     except Exception as e:
         logger.error(f"Risk pattern search failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# —— GET /memory/recent ————————————————————————————————————————————————————————————————
+
+@router.get("/memory/recent", response_model=list[MemoryRecentResult])
+async def get_recent_memory(
+    limit: int = Query(default=20, ge=1, le=100, description="Max recent analyses"),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Return recently stored analyses for the authenticated user.
+    """
+    client = _get_qdrant_client()
+    logger.info("Recent memory requested by user=%s (limit=%s)", current_user.unique_user_id, limit)
+
+    try:
+        from vector_store.memory_service import retrieve_recent_insights
+
+        results = []
+        for key in (str(current_user.id), current_user.unique_user_id):
+            results = await retrieve_recent_insights(
+                client=client,
+                user_id=key,
+                limit=limit,
+            )
+            if results:
+                break
+        return results
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Recent memory retrieval failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))

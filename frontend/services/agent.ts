@@ -73,6 +73,19 @@ export async function searchCompany(query: string): Promise<{ ticker: string; co
 }
 
 /**
+ * GET /api/v1/resolve-ticker?q=...
+ * Resolve ticker symbol to company name.
+ */
+export async function resolveTicker(ticker: string): Promise<{ ticker: string; company_name: string } | null> {
+    try {
+        const res = await api.get<{ ticker: string; company_name: string }>(`/resolve-ticker?q=${encodeURIComponent(ticker)}`);
+        return res.data ?? null;
+    } catch {
+        return null;
+    }
+}
+
+/**
  * POST /api/v1/ai-insights
  * Generate AI Insights for deep mode
  */

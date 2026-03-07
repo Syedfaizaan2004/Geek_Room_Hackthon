@@ -27,7 +27,7 @@ from qdrant_client.models import (
 
 from vector_store.collections import COLLECTION_NAME
 from vector_store.embeddings import generate_embedding, build_insight_text
-from schemas.memory import MemorySimilarResult, RiskPatternResult
+from schemas.memory import MemorySimilarResult, RiskPatternResult, MemoryRecentResult
 
 logger = logging.getLogger(__name__)
 
@@ -270,6 +270,69 @@ async def search_by_risk_pattern(
 
     except Exception as e:
         logger.error(f"search_by_risk_pattern failed (threshold={risk_threshold}): {e}")
+        return []
+
+
+# —— Recent stored analyses ————————————————————————————————————————————————————————————————
+
+async def retrieve_recent_insights(
+    client: AsyncQdrantClient,
+    user_id: str,
+    limit: int = 20,
+) -> List[MemoryRecentResult]:
+    """
+    Return recent stored insights for a specific user.
+    """
+    try:
+        fetch_limit = min(max(limit * 5, 40), 250)
+        query_filter = Filter(
+            must=[
+                FieldCondition(
+                    key="user_id",
+                    match=MatchValue(value=user_id),
+                )
+            ]
+        )
+
+        q_start = time.perf_counter()
+        try:
+            points, _ = await client.scroll(
+                collection_name=COLLECTION_NAME,
+                scroll_filter=query_filter,
+                limit=fetch_limit,
+                with_payload=True,
+                order_by="timestamp",
+            )
+        except Exception:
+            # Fallback for clusters where payload ordering is unsupported.
+            points, _ = await client.scroll(
+                collection_name=COLLECTION_NAME,
+                scroll_filter=query_filter,
+                limit=fetch_limit,
+                with_payload=True,
+            )
+        _record_qdrant_latency(q_start)
+
+        output: List[MemoryRecentResult] = []
+        for point in points:
+            payload = point.payload or {}
+            output.append(MemoryRecentResult(
+                ticker=payload.get("ticker", "?"),
+                summary_excerpt=payload.get("summary_excerpt", ""),
+                risk_score=payload.get("risk_score", 0.0),
+                financial_health_score=payload.get("financial_health_score", 0.0),
+                insight_type=payload.get("insight_type", "deep"),
+                stored_at=_parse_ts(payload.get("timestamp")),
+            ))
+
+        output.sort(
+            key=lambda item: item.stored_at or datetime(1970, 1, 1, tzinfo=timezone.utc),
+            reverse=True,
+        )
+        return output[:limit]
+
+    except Exception as e:
+        logger.error(f"retrieve_recent_insights failed for user={user_id}: {e}")
         return []
 
 

@@ -47,11 +47,11 @@ logger = logging.getLogger(__name__)
 # ── Static Assumption Catalogue ───────────────────────────────────────────────
 # These are always disclosed regardless of which engines ran.
 BASE_ASSUMPTIONS: List[str] = [
-    "Forecast direction is derived from historical volatility scaling and momentum indicators (Phase 4).",
-    "Risk scoring is threshold-based using leverage ratios, current ratio, and FCF stability (Phase 6).",
-    "Scenario stress impacts are deterministic approximations, not Monte Carlo simulations (Phase 7).",
-    "Peer comparison uses equally-weighted sector averages from yfinance metadata (Phase 8).",
-    "Financial health score is a composite of profitability, leverage, liquidity, and cash flow ratios (Phase 5).",
+    "Forecast direction is derived from historical volatility scaling and momentum indicators.",
+    "Risk scoring is threshold-based using leverage ratios, current ratio, and FCF stability.",
+    "Scenario stress impacts are deterministic approximations, not Monte Carlo simulations.",
+    "Peer comparison uses equally-weighted sector averages from yfinance metadata.",
+    "Financial health score is a composite of profitability, leverage, liquidity, and cash flow ratios.",
     "All probabilities are statistical estimates based on recent price history — not forward guidance.",
     "Missing financial fields are treated as neutral (0.0) rather than penalised, to avoid false negatives.",
 ]

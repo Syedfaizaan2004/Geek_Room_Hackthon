@@ -1,3 +1,5 @@
+DEMO LINK: https://dashboard.render.com/web/srv-d6kcvftm5p6s73do0ek0
+
 # AI Financial Agent
 
 A comprehensive AI-powered financial research platform combining a FastAPI backend with a modern Next.js frontend. The platform serves as an advanced financial analyst, providing real-time market data, AI-generated investment insights, portfolio analysis, deterministic math models, and predictive modeling using vector search (Qdrant) and LangGraph.

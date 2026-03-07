@@ -17,6 +17,7 @@ import TransparencyPanel from '@/components/ui/TransparencyPanel';
 import DataFreshnessBar from '@/components/ui/DataFreshnessBar';
 import ExportBar from '@/components/ui/ExportBar';
 import { runAnalysis, AgentResponseData } from '@/services/agent';
+import { useCompanyIdentity } from '@/hooks/useCompanyIdentity';
 import { AlertTriangle, Zap, RefreshCw } from 'lucide-react';
 
 function QuickContent() {
@@ -56,6 +57,8 @@ function QuickContent() {
     const d = data;
     const recs = d?.recommendations as Parameters<typeof SmartRecommendationPanel>[0]['recommendations'];
     const demoMode = !!(d?.demo_mode);
+    const activeTicker = (response?.ticker ?? ticker ?? '').toUpperCase();
+    const { displayLabel } = useCompanyIdentity(activeTicker);
 
     return (
         <div className="max-w-5xl mx-auto space-y-5">
@@ -66,6 +69,11 @@ function QuickContent() {
                 </div>
                 <div>
                     <h1 className="text-xl font-bold text-white">Quick Analysis</h1>
+                    {activeTicker && (
+                        <p className="text-xs mt-1" style={{ color: '#93c5fd' }}>
+                            {displayLabel}
+                        </p>
+                    )}
                     <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Fast 4-engine snapshot — market · risk · confidence · insights</p>
                 </div>
             </div>
@@ -187,3 +195,5 @@ export default function QuickPage() {
         </Suspense>
     );
 }
+
+

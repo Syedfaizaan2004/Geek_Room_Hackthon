@@ -3,7 +3,7 @@ from typing import Optional, List
 from pydantic import BaseModel
 from fastapi import APIRouter, HTTPException, Query
 
-from utils.company_lookup import search_company, get_suggestions
+from utils.company_lookup import search_company, get_suggestions, resolve_ticker
 
 logger = logging.getLogger(__name__)
 
@@ -34,3 +34,14 @@ async def api_suggest_company(q: str = Query(..., min_length=2, description="Pre
     results = get_suggestions(q)
     # We always return an array, even if empty
     return SuggestionResponse(suggestions=[SearchResponse(**r) for r in results])
+
+
+@router.get("/resolve-ticker", response_model=SearchResponse)
+async def api_resolve_ticker(q: str = Query(..., min_length=1, description="Ticker symbol")):
+    """
+    Resolve a ticker symbol to canonical company name.
+    """
+    result = resolve_ticker(q)
+    if not result:
+        raise HTTPException(status_code=404, detail=f"Ticker '{q}' not found.")
+    return SearchResponse(**result)

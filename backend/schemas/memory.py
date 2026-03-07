@@ -18,6 +18,16 @@ class MemorySimilarResult(BaseModel):
     stored_at: Optional[datetime] = None
 
 
+class MemoryRecentResult(BaseModel):
+    """A recent stored insight without semantic similarity metadata."""
+    ticker: str
+    summary_excerpt: str
+    risk_score: float
+    financial_health_score: float
+    insight_type: str
+    stored_at: Optional[datetime] = None
+
+
 class MemorySearchRequest(BaseModel):
     """Request body for POST /memory/search"""
     query: str = Field(..., min_length=3, max_length=1000)

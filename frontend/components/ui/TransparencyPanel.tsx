@@ -1,6 +1,5 @@
 // components/ui/TransparencyPanel.tsx
-// Phase 17 — Collapsible assumptions & transparency panel.
-// Shows model assumptions, contradictions, data completeness %.
+// Collapsible assumptions and transparency panel.
 
 'use client';
 import { ChevronDown, AlertTriangle, CheckCircle, Info } from 'lucide-react';
@@ -28,16 +27,23 @@ export default function TransparencyPanel({ confidence }: TransparencyPanelProps
         severity: c.severity as string | undefined,
     }));
 
-    const uncertainty = confidence.uncertainty as { level?: string; factors?: string[]; drivers?: string[] } | undefined;
+    const uncertainty = confidence.uncertainty as
+        | { level?: string; factors?: string[]; drivers?: string[] }
+        | undefined;
     const uncertaintyFactors = uncertainty?.factors ?? uncertainty?.drivers ?? [];
+    const uncertaintyLevel = uncertainty?.level ?? 'low';
 
-    const ASSUMPTIONS = [
+    const defaultAssumptions = [
         'Market data sourced from yfinance (15-min delayed)',
         'Forecasts use moving averages and momentum indicators',
-        'Risk scoring is deterministic — no LLM inference',
+        'Risk scoring is deterministic - no LLM inference',
         'Fundamentals calculated from trailing twelve months (TTM)',
         'Peer comparison uses live sector data',
     ];
+    const assumptionsFromApi = Array.isArray(confidence.assumptions)
+        ? confidence.assumptions.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+        : [];
+    const assumptions = assumptionsFromApi.length > 0 ? assumptionsFromApi : defaultAssumptions;
 
     return (
         <details className="card details-panel fade-in">
@@ -54,16 +60,21 @@ export default function TransparencyPanel({ confidence }: TransparencyPanelProps
                 <div>
                     <div className="flex justify-between items-center mb-1.5">
                         <span className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>DATA COMPLETENESS</span>
-                        <span className="text-xs font-bold" style={{ color: completeness >= 80 ? '#10b981' : completeness >= 60 ? '#f59e0b' : '#ef4444' }}>
+                        <span
+                            className="text-xs font-bold"
+                            style={{ color: completeness >= 80 ? '#10b981' : completeness >= 60 ? '#f59e0b' : '#ef4444' }}
+                        >
                             {Math.round(completeness)}%
                         </span>
                     </div>
                     <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
-                        <div className="h-full rounded-full transition-all duration-700"
+                        <div
+                            className="h-full rounded-full transition-all duration-700"
                             style={{
                                 width: `${completeness}%`,
-                                background: completeness >= 80 ? '#10b981' : completeness >= 60 ? '#f59e0b' : '#ef4444'
-                            }} />
+                                background: completeness >= 80 ? '#10b981' : completeness >= 60 ? '#f59e0b' : '#ef4444',
+                            }}
+                        />
                     </div>
                 </div>
 
@@ -71,7 +82,7 @@ export default function TransparencyPanel({ confidence }: TransparencyPanelProps
                 <div>
                     <p className="text-[10px] font-semibold mb-2" style={{ color: 'var(--text-muted)' }}>ASSUMPTIONS</p>
                     <ul className="space-y-1.5">
-                        {ASSUMPTIONS.map((a, i) => (
+                        {assumptions.map((a, i) => (
                             <li key={i} className="flex items-start gap-2 text-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>
                                 <CheckCircle size={11} style={{ color: '#10b981', flexShrink: 0, marginTop: 1 }} />
                                 {a}
@@ -86,8 +97,11 @@ export default function TransparencyPanel({ confidence }: TransparencyPanelProps
                         <p className="text-[10px] font-semibold mb-2" style={{ color: 'var(--text-muted)' }}>CONTRADICTION ALERTS</p>
                         <div className="space-y-1.5">
                             {contradictions.map((c, i) => (
-                                <div key={i} className="flex items-start gap-2 px-3 py-2 rounded-lg"
-                                    style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}>
+                                <div
+                                    key={i}
+                                    className="flex items-start gap-2 px-3 py-2 rounded-lg"
+                                    style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}
+                                >
                                     <AlertTriangle size={11} style={{ color: '#f59e0b', flexShrink: 0, marginTop: 1 }} />
                                     <span className="text-xs" style={{ color: '#fbbf24' }}>
                                         {c.title ?? 'Potential data inconsistency detected'}
@@ -100,19 +114,41 @@ export default function TransparencyPanel({ confidence }: TransparencyPanelProps
                 )}
 
                 {/* Uncertainty */}
-                {uncertaintyFactors.length > 0 && (
-                    <div>
-                        <p className="text-[10px] font-semibold mb-2" style={{ color: 'var(--text-muted)' }}>UNCERTAINTY FACTORS</p>
+                <div>
+                    <div className="flex items-center justify-between mb-2">
+                        <p className="text-[10px] font-semibold" style={{ color: 'var(--text-muted)' }}>UNCERTAINTY FACTORS</p>
+                        <span
+                            className="text-[10px] font-bold uppercase"
+                            style={{
+                                color:
+                                    uncertaintyLevel === 'high'
+                                        ? '#ef4444'
+                                        : uncertaintyLevel === 'moderate'
+                                            ? '#f59e0b'
+                                            : '#10b981',
+                            }}
+                        >
+                            {uncertaintyLevel}
+                        </span>
+                    </div>
+                    {uncertaintyFactors.length > 0 ? (
                         <div className="flex flex-wrap gap-2">
                             {uncertaintyFactors.map((f, i) => (
-                                <span key={i} className="text-[11px] px-2 py-1 rounded-lg"
-                                    style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>
+                                <span
+                                    key={i}
+                                    className="text-[11px] px-2 py-1 rounded-lg"
+                                    style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}
+                                >
                                     {f}
                                 </span>
                             ))}
                         </div>
-                    </div>
-                )}
+                    ) : (
+                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                            No major uncertainty drivers detected for current inputs.
+                        </p>
+                    )}
+                </div>
             </div>
         </details>
     );
